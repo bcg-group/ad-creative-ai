@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 async function fetchPageContent(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -48,6 +47,7 @@ async function fetchPageContent(url: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const { url } = await req.json()
 
   if (!url || typeof url !== 'string') {

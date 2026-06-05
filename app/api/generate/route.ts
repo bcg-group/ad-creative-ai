@@ -3,9 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { FREE_CREDITS_LIMIT, BILLING_ENABLED } from '@/utils/config'
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-})
 
 const SYSTEM_PROMPT = `You are an elite mobile app performance marketer with 10+ years managing multi-million dollar UA campaigns on Meta, TikTok, and Google UAC. You have achieved consistent sub-$1 CPIs across dozens of app categories.
 
@@ -144,6 +141,7 @@ function buildPrompt(
 }
 
 export async function POST(req: NextRequest) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
