@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { getValidAccessToken, listAccessibleCustomers, googleAdsQuery } from '@/utils/google-ads'
+import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery } from '@/utils/google-ads'
 
 export async function GET(req: NextRequest) {
   const supabase = createServerClient(
@@ -12,44 +12,52 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let accessToken: string
+  let connectedAccounts
   try {
-    accessToken = await getValidAccessToken(user.id)
+    connectedAccounts = await getConnectedAccounts(user.id)
   } catch {
     return NextResponse.json({ error: 'Google Ads not connected' }, { status: 401 })
   }
 
-  const customerIds = await listAccessibleCustomers(accessToken)
+  const allAccounts: any[] = []
 
-  const accounts = await Promise.all(
-    customerIds.map(async (customerId) => {
+  await Promise.all(
+    connectedAccounts.map(async ({ accessToken, googleAccountEmail }) => {
+      let customerIds: string[]
       try {
-        const rows = await googleAdsQuery(accessToken, customerId, `
-          SELECT
-            customer.id,
-            customer.descriptive_name,
-            customer.manager,
-            customer.currency_code,
-            customer.time_zone
-          FROM customer
-          LIMIT 1
-        `)
-        const c = rows[0]?.customer
-        if (!c) return null
-        return {
-          id: String(c.id),
-          name: c.descriptive_name,
-          isManager: c.manager,
-          currency: c.currencyCode,
-          timezone: c.timeZone,
-        }
+        customerIds = await listAccessibleCustomers(accessToken)
       } catch {
-        return null
+        return
       }
+
+      await Promise.all(
+        customerIds.map(async (customerId) => {
+          try {
+            const rows = await googleAdsQuery(accessToken, customerId, `
+              SELECT
+                customer.id,
+                customer.descriptive_name,
+                customer.manager,
+                customer.currency_code,
+                customer.time_zone
+              FROM customer
+              LIMIT 1
+            `)
+            const c = rows[0]?.customer
+            if (!c) return
+            allAccounts.push({
+              googleAccountEmail,
+              id: String(c.id),
+              name: c.descriptiveName,
+              isManager: c.manager,
+              currency: c.currencyCode,
+              timezone: c.timeZone,
+            })
+          } catch {}
+        })
+      )
     })
   )
 
-  return NextResponse.json({
-    accounts: accounts.filter(Boolean),
-  })
+  return NextResponse.json({ accounts: allAccounts })
 }

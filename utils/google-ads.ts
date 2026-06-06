@@ -5,10 +5,12 @@ const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID!
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET!
 const API_BASE = 'https://googleads.googleapis.com/v17'
 
-export type GoogleAdsToken = {
-  access_token: string
-  refresh_token: string
-  expires_at: string
+export type GoogleAdsAccount = {
+  googleAccountId: string
+  googleAccountEmail: string
+  accessToken: string
+  refreshToken: string
+  expiresAt: string
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<string> {
@@ -27,32 +29,43 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
   return data.access_token
 }
 
-export async function getValidAccessToken(userId: string): Promise<string> {
+export async function getConnectedAccounts(userId: string): Promise<GoogleAdsAccount[]> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data: token } = await supabase
+  const { data: tokens } = await supabase
     .from('google_ads_tokens')
-    .select('access_token, refresh_token, expires_at')
+    .select('google_account_id, google_account_email, access_token, refresh_token, expires_at')
     .eq('user_id', userId)
-    .single()
 
-  if (!token) throw new Error('No Google Ads token found')
+  if (!tokens || tokens.length === 0) throw new Error('No Google Ads accounts connected')
 
-  const isExpired = new Date(token.expires_at) <= new Date(Date.now() + 60_000)
-  if (!isExpired) return token.access_token
+  // Refresh expired tokens in parallel
+  const refreshed = await Promise.all(
+    tokens.map(async (t) => {
+      const isExpired = new Date(t.expires_at) <= new Date(Date.now() + 60_000)
+      if (!isExpired) return { ...t, access_token: t.access_token }
 
-  const newAccessToken = await refreshAccessToken(token.refresh_token)
+      const newToken = await refreshAccessToken(t.refresh_token)
+      await supabase.from('google_ads_tokens').update({
+        access_token: newToken,
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('user_id', userId).eq('google_account_id', t.google_account_id)
 
-  await supabase.from('google_ads_tokens').update({
-    access_token: newAccessToken,
-    expires_at: new Date(Date.now() + 3600_000).toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq('user_id', userId)
+      return { ...t, access_token: newToken }
+    })
+  )
 
-  return newAccessToken
+  return refreshed.map((t) => ({
+    googleAccountId: t.google_account_id,
+    googleAccountEmail: t.google_account_email,
+    accessToken: t.access_token,
+    refreshToken: t.refresh_token,
+    expiresAt: t.expires_at,
+  }))
 }
 
 export async function googleAdsQuery(

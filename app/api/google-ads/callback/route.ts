@@ -18,14 +18,13 @@ export async function GET(req: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.redirect(`${appUrl}/login`)
-  }
+  if (!user) return NextResponse.redirect(`${appUrl}/login`)
 
   const clientId = process.env.GOOGLE_ADS_CLIENT_ID!
   const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET!
   const redirectUri = `${appUrl}/api/google-ads/callback`
 
+  // Exchange code for tokens
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -39,21 +38,34 @@ export async function GET(req: NextRequest) {
   })
 
   const tokens = await tokenRes.json()
-
   if (!tokenRes.ok || !tokens.access_token) {
     return NextResponse.redirect(`${appUrl}/ads/connect?error=token_exchange_failed`)
+  }
+
+  // Fetch Google account info (sub + email)
+  const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  })
+  const userinfo = await userinfoRes.json()
+  const googleAccountId = userinfo.sub as string
+  const googleAccountEmail = userinfo.email as string
+
+  if (!googleAccountId) {
+    return NextResponse.redirect(`${appUrl}/ads/connect?error=userinfo_failed`)
   }
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
   await supabase.from('google_ads_tokens').upsert({
     user_id: user.id,
+    google_account_id: googleAccountId,
+    google_account_email: googleAccountEmail,
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: expiresAt,
     scope: tokens.scope,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id' })
+  }, { onConflict: 'user_id,google_account_id' })
 
-  return NextResponse.redirect(`${appUrl}/ads/dashboard?connected=true`)
+  return NextResponse.redirect(`${appUrl}/ads/connect?connected=true`)
 }
