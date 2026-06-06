@@ -12,7 +12,13 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const accessToken = await getValidAccessToken(user.id)
+  let accessToken: string
+  try {
+    accessToken = await getValidAccessToken(user.id)
+  } catch {
+    return NextResponse.json({ error: 'Google Ads not connected' }, { status: 401 })
+  }
+
   const customerIds = await listAccessibleCustomers(accessToken)
 
   const accounts = await Promise.all(

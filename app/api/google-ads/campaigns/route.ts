@@ -17,7 +17,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const filterCustomerId = searchParams.get('customer_id')
 
-  const accessToken = await getValidAccessToken(user.id)
+  let accessToken: string
+  try {
+    accessToken = await getValidAccessToken(user.id)
+  } catch {
+    return NextResponse.json({ error: 'Google Ads not connected' }, { status: 401 })
+  }
 
   let customerIds = await listAccessibleCustomers(accessToken)
   if (filterCustomerId) customerIds = customerIds.filter((id) => id === filterCustomerId)
