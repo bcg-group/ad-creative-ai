@@ -280,9 +280,14 @@ export default function Home() {
           <span className="text-sm text-gray-400">for mobile apps</span>
           <div className="ml-auto flex items-center gap-3">
             {!authLoading && user && (
-              <a href="/history" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                History
-              </a>
+              <>
+                <a href="/history" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                  History
+                </a>
+                <a href="/ads" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                  Ads Manager
+                </a>
+              </>
             )}
             {!authLoading && (
               user ? (
