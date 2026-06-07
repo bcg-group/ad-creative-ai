@@ -52,22 +52,22 @@ function ConnectContent() {
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Google Ads Accounts</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Connect nhiều Google accounts để quản lý tất cả MCCs trong một dashboard.
+          Connect multiple Google accounts to manage all MCCs in one dashboard.
         </p>
       </div>
 
       {justConnected && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
-          Account đã kết nối thành công!
+          Account connected successfully!
         </div>
       )}
 
       {error && (
         <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600">
-          {error === 'access_denied' && 'Bạn đã từ chối quyền truy cập.'}
-          {error === 'token_exchange_failed' && 'Không thể lấy token. Vui lòng thử lại.'}
-          {error === 'userinfo_failed' && 'Không thể lấy thông tin account. Vui lòng thử lại.'}
-          {!['access_denied', 'token_exchange_failed', 'userinfo_failed'].includes(error) && 'Có lỗi xảy ra.'}
+          {error === 'access_denied' && 'You denied access.'}
+          {error === 'token_exchange_failed' && 'Could not retrieve token. Please try again.'}
+          {error === 'userinfo_failed' && 'Could not retrieve account info. Please try again.'}
+          {!['access_denied', 'token_exchange_failed', 'userinfo_failed'].includes(error) && 'An error occurred.'}
         </div>
       )}
 
@@ -107,17 +107,17 @@ function ConnectContent() {
         </div>
       ) : (
         <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 px-5 py-6 text-center">
-          <p className="text-sm text-gray-400">Chưa có Google account nào được kết nối.</p>
+          <p className="text-sm text-gray-400">No Google accounts connected yet.</p>
         </div>
       )}
 
       {/* Connect button */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <p className="text-sm font-medium text-gray-700 mb-1">
-          {accounts.length > 0 ? 'Thêm Google account khác' : 'Kết nối Google account'}
+          {accounts.length > 0 ? 'Add another Google account' : 'Connect Google account'}
         </p>
         <p className="text-xs text-gray-400 mb-4">
-          Mỗi lần connect sẽ thêm 1 Google account với toàn bộ MCC và sub-accounts của nó.
+          Each connection adds one Google account with all its MCCs and sub-accounts.
         </p>
         <a
           href="/api/google-ads/auth"
@@ -129,10 +129,10 @@ function ConnectContent() {
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
           </svg>
-          {accounts.length > 0 ? 'Connect thêm account' : 'Connect với Google Ads'}
+          {accounts.length > 0 ? 'Connect another account' : 'Connect with Google Ads'}
         </a>
         <p className="mt-3 text-xs text-gray-400 text-center">
-          App chỉ đọc dữ liệu. Không có quyền chỉnh sửa campaigns.
+          Read-only access. No permission to edit campaigns.
         </p>
       </div>
 

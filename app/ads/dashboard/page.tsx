@@ -14,16 +14,16 @@ const DEMO_CAMPAIGNS: Campaign[] = [
   { customerId: '111', accountName: 'MyApp – VN', currency: 'USD', campaignId: '7', campaignName: 'UAC_iOS_VN_InApp_Jun', status: 'ENABLED', labels: [], impressions: 670340, clicks: 7820, spend: 2105.70, conversions: 780, cpi: 2.70, roas: 4.20, ctr: 1.17 },
 ]
 
-const DEMO_ANALYSIS = `📊 Tổng quan hiệu suất (30 ngày gần nhất)
+const DEMO_ANALYSIS = `📊 Performance Summary (Last 30 days)
 
-Top performer: UAC_iOS_TH_Installs_Jun (CPI $1.76, ROAS 3.45x) — đây là campaign hiệu quả nhất cần tăng budget.
+✅ Top performer: UAC_iOS_TH_Installs_Jun (CPI $1.76, ROAS 3.45x) — most efficient campaign, increase budget by 20–30%.
 
-⚠️ Cần chú ý: UAC_iOS_US_InApp_May đang tạm dừng với ROAS 0.74x — chi phí vượt doanh thu, nên xem xét lại creatives và targeting trước khi bật lại.
+❌ Action needed: UAC_iOS_US_InApp_May is paused with ROAS 0.74x — spend exceeds revenue. Review creatives and targeting before re-enabling.
 
-💡 Đề xuất:
-• Tăng budget 20–30% cho các campaign VN và TH đang có CPI < $2.
-• UAC_Android_PH có CTR thấp (0.88%) — thử A/B test banner mới.
-• Campaign InApp VN đang có ROAS 4.20x — cân nhắc scale ngay tháng này.`
+💡 Recommendations:
+• Scale budget for VN and TH campaigns with CPI < $2.
+• UAC_Android_PH has low CTR (0.88%) — run an A/B test with new banner creatives.
+• UAC_iOS_VN_InApp_Jun is delivering ROAS 4.20x — strong candidate for scaling this month.`
 
 type Campaign = {
   customerId: string
@@ -141,7 +141,7 @@ function DashboardContent() {
       const data = await res.json()
       setAnalysis(data.analysis ?? '')
     } catch {
-      setAnalysis('Không thể phân tích lúc này. Vui lòng thử lại.')
+      setAnalysis('Analysis unavailable. Please try again.')
     } finally {
       setAnalysisLoading(false)
     }
@@ -153,7 +153,7 @@ function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Campaign Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">30 ngày gần nhất — tất cả accounts</p>
+          <p className="text-sm text-gray-500 mt-0.5">Last 30 days — all accounts</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -183,13 +183,13 @@ function DashboardContent() {
 
       {isDemo && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700 font-medium">
-          Demo mode — dữ liệu mẫu, không kết nối Google Ads thật
+          Demo mode — sample data, not connected to real Google Ads
         </div>
       )}
 
       {justConnected && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
-          Google Ads đã kết nối thành công! Đang tải campaign data...
+          Google Ads connected successfully! Loading campaign data...
         </div>
       )}
 
@@ -241,7 +241,7 @@ function DashboardContent() {
           </div>
         ) : campaigns.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
-            <p className="text-sm text-gray-500">Không tìm thấy campaign nào.</p>
+            <p className="text-sm text-gray-500">No campaigns found.</p>
             <a href="/ads/connect" className="mt-2 text-sm text-blue-600 hover:underline">Connect Google Ads →</a>
           </div>
         ) : (

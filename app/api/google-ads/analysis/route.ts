@@ -26,17 +26,17 @@ export async function POST(req: NextRequest) {
     max_tokens: 600,
     messages: [{
       role: 'user',
-      content: `Bạn là chuyên gia phân tích Google Ads cho mobile apps. Phân tích các campaigns sau và cho biết campaign nào đang hiệu quả, campaign nào không, và đề xuất hành động cụ thể.
+      content: `You are a Google Ads performance analyst for mobile apps. Analyze the following campaigns and identify which are performing well, which are underperforming, and recommend specific actions.
 
-Dữ liệu 30 ngày gần nhất:
+Last 30 days data:
 ${summary}
 
-Benchmark tốt: CPI < $2, ROAS > 2x, CTR > 1%.
+Good benchmarks: CPI < $2, ROAS > 2x, CTR > 1%.
 
-Trả lời ngắn gọn bằng tiếng Việt, tối đa 5 bullet points. Format:
-✅ Campaign tốt: [tên] — lý do ngắn
-❌ Campaign kém: [tên] — lý do ngắn
-💡 Đề xuất: hành động cụ thể nhất cần làm ngay`,
+Reply concisely in English, maximum 5 bullet points. Format:
+✅ Top campaign: [name] — short reason
+❌ Underperforming: [name] — short reason
+💡 Recommendation: most important action to take now`,
     }],
   })
 

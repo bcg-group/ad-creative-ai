@@ -65,7 +65,7 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Mỗi project là một app, dùng để link creatives với campaigns</p>
+          <p className="text-sm text-gray-500 mt-0.5">Each project represents an app — use it to link creatives to campaigns</p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
@@ -80,9 +80,9 @@ export default function ProjectsPage() {
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700">Tạo Project mới</h2>
+          <h2 className="text-sm font-semibold text-gray-700">New Project</h2>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tên app <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">App name <span className="text-red-500">*</span></label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -136,9 +136,9 @@ export default function ProjectsPage() {
         </div>
       ) : projects.length === 0 ? (
         <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
-          <p className="text-sm text-gray-400">Chưa có project nào.</p>
+          <p className="text-sm text-gray-400">No projects yet.</p>
           <button onClick={() => setShowForm(true)} className="mt-2 text-sm text-blue-600 hover:underline">
-            Tạo project đầu tiên →
+            Create your first project →
           </button>
         </div>
       ) : (

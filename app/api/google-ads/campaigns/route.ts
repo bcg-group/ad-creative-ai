@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const allCampaigns: any[] = []
 
-  // Loop qua tất cả Google accounts đã connect
+  // Loop through all connected Google accounts
   await Promise.all(
     accounts.map(async ({ accessToken, googleAccountEmail }) => {
       let customerIds: string[]
