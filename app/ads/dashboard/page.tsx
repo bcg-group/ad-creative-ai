@@ -4,6 +4,27 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
+const DEMO_CAMPAIGNS: Campaign[] = [
+  { customerId: '111', accountName: 'MyApp – VN', currency: 'USD', campaignId: '1', campaignName: 'UAC_iOS_VN_Installs_Jun', status: 'ENABLED', labels: [], impressions: 1820430, clicks: 24610, spend: 3241.85, conversions: 1820, cpi: 1.78, roas: 3.12, ctr: 1.35 },
+  { customerId: '111', accountName: 'MyApp – VN', currency: 'USD', campaignId: '2', campaignName: 'UAC_Android_VN_Installs_Jun', status: 'ENABLED', labels: [], impressions: 2540100, clicks: 31820, spend: 4875.20, conversions: 2310, cpi: 2.11, roas: 2.87, ctr: 1.25 },
+  { customerId: '222', accountName: 'MyApp – SEA', currency: 'USD', campaignId: '3', campaignName: 'UAC_iOS_TH_Installs_Jun', status: 'ENABLED', labels: [], impressions: 980200, clicks: 11450, spend: 1562.40, conversions: 890, cpi: 1.76, roas: 3.45, ctr: 1.17 },
+  { customerId: '222', accountName: 'MyApp – SEA', currency: 'USD', campaignId: '4', campaignName: 'UAC_Android_PH_Installs_Jun', status: 'ENABLED', labels: [], impressions: 1120450, clicks: 9870, spend: 1089.60, conversions: 540, cpi: 2.02, roas: 2.10, ctr: 0.88 },
+  { customerId: '333', accountName: 'MyApp – Global', currency: 'USD', campaignId: '5', campaignName: 'UAC_iOS_US_InApp_May', status: 'PAUSED', labels: [], impressions: 450210, clicks: 8760, spend: 6420.00, conversions: 310, cpi: 20.71, roas: 0.74, ctr: 1.95 },
+  { customerId: '333', accountName: 'MyApp – Global', currency: 'USD', campaignId: '6', campaignName: 'UAC_Android_SEA_Retarget', status: 'PAUSED', labels: [], impressions: 230780, clicks: 3140, spend: 412.30, conversions: 195, cpi: 2.11, roas: 1.95, ctr: 1.36 },
+  { customerId: '111', accountName: 'MyApp – VN', currency: 'USD', campaignId: '7', campaignName: 'UAC_iOS_VN_InApp_Jun', status: 'ENABLED', labels: [], impressions: 670340, clicks: 7820, spend: 2105.70, conversions: 780, cpi: 2.70, roas: 4.20, ctr: 1.17 },
+]
+
+const DEMO_ANALYSIS = `📊 Tổng quan hiệu suất (30 ngày gần nhất)
+
+Top performer: UAC_iOS_TH_Installs_Jun (CPI $1.76, ROAS 3.45x) — đây là campaign hiệu quả nhất cần tăng budget.
+
+⚠️ Cần chú ý: UAC_iOS_US_InApp_May đang tạm dừng với ROAS 0.74x — chi phí vượt doanh thu, nên xem xét lại creatives và targeting trước khi bật lại.
+
+💡 Đề xuất:
+• Tăng budget 20–30% cho các campaign VN và TH đang có CPI < $2.
+• UAC_Android_PH có CTR thấp (0.88%) — thử A/B test banner mới.
+• Campaign InApp VN đang có ROAS 4.20x — cân nhắc scale ngay tháng này.`
+
 type Campaign = {
   customerId: string
   accountName: string
@@ -40,6 +61,7 @@ function MetricCell({ value, format }: { value: number | null; format: string })
 function DashboardContent() {
   const searchParams = useSearchParams()
   const justConnected = searchParams.get('connected') === 'true'
+  const isDemo = searchParams.get('demo') === 'true'
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +72,11 @@ function DashboardContent() {
   const [analysis, setAnalysis] = useState('')
 
   const fetchCampaigns = useCallback(async () => {
+    if (isDemo) {
+      setCampaigns(DEMO_CAMPAIGNS)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -66,7 +93,7 @@ function DashboardContent() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isDemo])
 
   useEffect(() => { fetchCampaigns() }, [fetchCampaigns])
 
@@ -95,6 +122,14 @@ function DashboardContent() {
   const activeCampaigns = campaigns.filter((c) => c.status === 'ENABLED').length
 
   const runAnalysis = async () => {
+    if (isDemo) {
+      setAnalysisLoading(true)
+      setAnalysis('')
+      await new Promise((r) => setTimeout(r, 800))
+      setAnalysis(DEMO_ANALYSIS)
+      setAnalysisLoading(false)
+      return
+    }
     setAnalysisLoading(true)
     setAnalysis('')
     try {
@@ -145,6 +180,12 @@ function DashboardContent() {
           </button>
         </div>
       </div>
+
+      {isDemo && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-700 font-medium">
+          Demo mode — dữ liệu mẫu, không kết nối Google Ads thật
+        </div>
+      )}
 
       {justConnected && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
