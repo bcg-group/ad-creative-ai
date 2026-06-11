@@ -16,8 +16,8 @@ export default function TermsPage() {
             </div>
             <span className="text-lg font-semibold text-gray-900">Ad Creative AI</span>
           </Link>
-          <Link href="/generate" className="text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-            Start for free
+          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            Sign in
           </Link>
         </div>
       </nav>
@@ -37,7 +37,7 @@ export default function TermsPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">2. Description of Service</h2>
             <p className="text-gray-600 leading-relaxed">
-              Ad Creative AI is an AI-powered tool that helps mobile app marketers generate ad copy for platforms including Meta, TikTok, and Google App Campaigns. The Service also provides a campaign performance dashboard by connecting to users&apos; Google Ads accounts via the Google Ads API for read-only reporting purposes.
+              Ad Creative AI is a personal internal tool for monitoring Google App Campaign performance and generating ad copy variants for my own mobile apps. It connects to my Google Ads accounts via the Google Ads API (read-only) to retrieve and display campaign metrics, and uses AI to generate ad copy for Google UAC, Meta, and TikTok campaigns.
             </p>
           </section>
 

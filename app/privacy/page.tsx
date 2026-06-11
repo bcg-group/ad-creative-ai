@@ -16,8 +16,8 @@ export default function PrivacyPage() {
             </div>
             <span className="text-lg font-semibold text-gray-900">Ad Creative AI</span>
           </Link>
-          <Link href="/generate" className="text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-            Start for free
+          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            Sign in
           </Link>
         </div>
       </nav>
