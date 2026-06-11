@@ -55,7 +55,7 @@ export default function AboutPage() {
           <section className="mb-10">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">The Developer</h2>
             <p className="text-gray-600 leading-relaxed">
-              Ad Creative AI is developed and maintained by <strong>AR-Draw</strong>, an independent software developer based in Vietnam. The developer runs mobile app advertising campaigns on Google, Meta, and TikTok, and built this tool to solve the practical problem of monitoring multiple campaign accounts in one place and generating ad creatives efficiently.
+              Ad Creative AI is developed and maintained by <strong>AR-Draw Studio</strong>, an independent software developer based in Vietnam. The developer runs mobile app advertising campaigns on Google, Meta, and TikTok, and built this tool to solve the practical problem of monitoring multiple campaign accounts in one place and generating ad creatives efficiently.
             </p>
             <p className="text-gray-600 leading-relaxed mt-3">
               This is a solo-developer, personal-use project. It is not affiliated with any agency or advertising platform.
@@ -71,7 +71,7 @@ export default function AboutPage() {
               </a>
             </p>
             <p className="text-gray-600 mt-2">
-              Business address: [YOUR_ADDRESS], Vietnam
+              Business address: Ha Noi, Vietnam
             </p>
           </section>
         </div>
@@ -79,7 +79,7 @@ export default function AboutPage() {
 
       <footer className="border-t border-gray-100 px-6 py-6">
         <div className="max-w-3xl mx-auto flex items-center gap-6 text-xs text-gray-400">
-          <span>© 2026 AR-Draw</span>
+          <span>© 2026 AR-Draw Studio</span>
           <Link href="/about" className="hover:text-gray-600 transition-colors">About</Link>
           <Link href="/privacy" className="hover:text-gray-600 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-gray-600 transition-colors">Terms of Service</Link>

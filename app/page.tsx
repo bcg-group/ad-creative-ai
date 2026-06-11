@@ -100,7 +100,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-gray-100 px-6 py-6">
         <div className="max-w-4xl mx-auto flex items-center justify-between text-xs text-gray-400">
-          <span>© 2026 AR-Draw</span>
+          <span>© 2026 AR-Draw Studio</span>
           <div className="flex items-center gap-5">
             <Link href="/about" className="hover:text-gray-600 transition-colors">About</Link>
             <Link href="/privacy" className="hover:text-gray-600 transition-colors">Privacy Policy</Link>

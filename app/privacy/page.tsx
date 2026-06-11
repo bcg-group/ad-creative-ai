@@ -30,7 +30,7 @@ export default function PrivacyPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">1. Overview</h2>
             <p className="text-gray-600 leading-relaxed">
-              Ad Creative AI (&quot;we&quot;, &quot;our&quot;, &quot;the Service&quot;) is a personal internal tool operated by <strong>AR-Draw</strong>, an independent developer. This Privacy Policy explains how we collect, use, and protect your information when you use this tool at <strong>ads.ar-draw.com</strong>.
+              Ad Creative AI (&quot;we&quot;, &quot;our&quot;, &quot;the Service&quot;) is a personal internal tool operated by <strong>AR-Draw Studio</strong>, an independent developer. This Privacy Policy explains how we collect, use, and protect your information when you use this tool at <strong>ads.ar-draw.com</strong>.
             </p>
           </section>
 
@@ -135,7 +135,7 @@ export default function PrivacyPage() {
               <a href="mailto:contact@ar-draw.com" className="text-blue-600 hover:underline">
                 contact@ar-draw.com
               </a><br />
-              Address: [YOUR_ADDRESS], Vietnam
+              Address: Ha Noi, Vietnam
             </p>
           </section>
         </div>
@@ -143,7 +143,7 @@ export default function PrivacyPage() {
 
       <footer className="border-t border-gray-100 px-6 py-6">
         <div className="max-w-3xl mx-auto flex items-center gap-6 text-xs text-gray-400">
-          <span>© 2026 AR-Draw</span>
+          <span>© 2026 AR-Draw Studio</span>
           <Link href="/about" className="hover:text-gray-600 transition-colors">About</Link>
           <Link href="/privacy" className="hover:text-gray-600 transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-gray-600 transition-colors">Terms of Service</Link>
