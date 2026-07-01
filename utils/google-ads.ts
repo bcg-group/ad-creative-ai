@@ -1,9 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const DEVELOPER_TOKEN = process.env.GOOGLE_ADS_DEVELOPER_TOKEN!
-const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID!
-const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET!
-const API_BASE = 'https://googleads.googleapis.com/v17'
+const API_BASE = 'https://googleads.googleapis.com/v19'
 
 export type GoogleAdsAccount = {
   googleAccountId: string
@@ -18,8 +15,8 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: process.env.GOOGLE_ADS_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
@@ -42,7 +39,6 @@ export async function getConnectedAccounts(userId: string): Promise<GoogleAdsAcc
 
   if (!tokens || tokens.length === 0) throw new Error('No Google Ads accounts connected')
 
-  // Refresh expired tokens in parallel
   const refreshed = await Promise.all(
     tokens.map(async (t) => {
       const isExpired = new Date(t.expires_at) <= new Date(Date.now() + 60_000)
@@ -71,16 +67,22 @@ export async function getConnectedAccounts(userId: string): Promise<GoogleAdsAcc
 export async function googleAdsQuery(
   accessToken: string,
   customerId: string,
-  query: string
+  query: string,
+  loginCustomerId?: string
 ): Promise<any[]> {
   const cleanId = customerId.replace(/-/g, '')
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+    'Content-Type': 'application/json',
+  }
+  if (loginCustomerId) {
+    headers['login-customer-id'] = loginCustomerId.replace(/-/g, '')
+  }
+
   const res = await fetch(`${API_BASE}/customers/${cleanId}/googleAds:searchStream`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'developer-token': DEVELOPER_TOKEN,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ query }),
   })
 
@@ -104,10 +106,29 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
   const res = await fetch(`${API_BASE}/customers:listAccessibleCustomers`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': DEVELOPER_TOKEN,
+      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
     },
   })
   if (!res.ok) throw new Error('Failed to list accessible customers')
   const data = await res.json()
   return (data.resourceNames ?? []).map((r: string) => r.replace('customers/', ''))
+}
+
+// Returns direct client account IDs under a manager (MCC) account
+export async function getClientAccountIds(
+  accessToken: string,
+  managerId: string
+): Promise<string[]> {
+  const rows = await googleAdsQuery(
+    accessToken,
+    managerId,
+    `SELECT customer_client.client_customer
+     FROM customer_client
+     WHERE customer_client.manager = false
+       AND customer_client.status = 'ENABLED'
+     LIMIT 1000`
+  )
+  return rows
+    .map((r: any) => r.customerClient?.clientCustomer?.replace('customers/', ''))
+    .filter(Boolean)
 }
