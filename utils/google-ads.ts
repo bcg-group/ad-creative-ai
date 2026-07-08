@@ -97,8 +97,10 @@ export async function googleAdsQuery(
   })
 
   if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err?.error?.message ?? `Google Ads API error ${res.status}`)
+    const errText = await res.text()
+    let message = `${res.status}: ${errText.slice(0, 800)}`
+    try { message = JSON.parse(errText)?.error?.message ?? message } catch {}
+    throw new Error(message)
   }
 
   const lines = await res.text()
