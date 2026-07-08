@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const API_BASE = 'https://googleads.googleapis.com/v19'
+const API_BASE = 'https://googleads.googleapis.com/v20'
 
 export type GoogleAdsAccount = {
   googleAccountId: string
