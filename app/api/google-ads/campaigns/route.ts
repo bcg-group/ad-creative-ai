@@ -69,13 +69,15 @@ export async function GET(req: NextRequest) {
   }
 
   const allCampaigns: any[] = []
+  const debugErrors: string[] = []
 
   await Promise.all(
     accounts.map(async ({ accessToken, googleAccountEmail }) => {
       let topLevelIds: string[]
       try {
         topLevelIds = await listAccessibleCustomers(accessToken)
-      } catch {
+      } catch (e: any) {
+        debugErrors.push(`[${googleAccountEmail}] listAccessibleCustomers: ${e?.message}`)
         return
       }
 
@@ -88,28 +90,35 @@ export async function GET(req: NextRequest) {
               SELECT customer.manager FROM customer LIMIT 1
             `)
             isManager = rows[0]?.customer?.manager ?? false
-          } catch {
+          } catch (e: any) {
+            debugErrors.push(`[${customerId}] customer.manager check: ${e?.message}`)
             return
           }
 
           if (!isManager) {
-            // Direct client account — query campaigns without login-customer-id
             if (filterCustomerId && customerId !== filterCustomerId) return
             try {
               const rows = await googleAdsQuery(accessToken, customerId, CAMPAIGN_QUERY)
               for (const row of rows) {
                 allCampaigns.push(rowToCampaign(row, googleAccountEmail, customerId))
               }
-            } catch {}
+            } catch (e: any) {
+              debugErrors.push(`[${customerId}] campaigns query: ${e?.message}`)
+            }
             return
           }
 
-          // Manager account — enumerate client accounts and query their campaigns
+          // Manager account — enumerate client accounts
           let clientIds: string[]
           try {
             clientIds = await getClientAccountIds(accessToken, customerId)
-          } catch {
+          } catch (e: any) {
+            debugErrors.push(`[${customerId}] getClientAccountIds: ${e?.message}`)
             return
+          }
+
+          if (clientIds.length === 0) {
+            debugErrors.push(`[${customerId}] manager has no client accounts`)
           }
 
           if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
@@ -121,7 +130,9 @@ export async function GET(req: NextRequest) {
                 for (const row of rows) {
                   allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
                 }
-              } catch {}
+              } catch (e: any) {
+                debugErrors.push(`[${clientId}] campaigns via MCC ${customerId}: ${e?.message}`)
+              }
             })
           )
         })
@@ -130,5 +141,5 @@ export async function GET(req: NextRequest) {
   )
 
   allCampaigns.sort((a, b) => b.spend - a.spend)
-  return NextResponse.json({ campaigns: allCampaigns, dateRange: DATE_RANGE })
+  return NextResponse.json({ campaigns: allCampaigns, dateRange: DATE_RANGE, debugErrors })
 }

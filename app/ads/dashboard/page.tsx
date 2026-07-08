@@ -88,6 +88,7 @@ function DashboardContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to load campaigns')
       setCampaigns(data.campaigns ?? [])
+      if (data.debugErrors?.length) console.warn('[Google Ads debug]', data.debugErrors)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load campaigns')
     } finally {
