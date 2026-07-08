@@ -67,7 +67,8 @@ function ConnectContent() {
           {error === 'access_denied' && 'You denied access.'}
           {error === 'token_exchange_failed' && 'Could not retrieve token. Please try again.'}
           {error === 'userinfo_failed' && 'Could not retrieve account info. Please try again.'}
-          {!['access_denied', 'token_exchange_failed', 'userinfo_failed'].includes(error) && 'An error occurred.'}
+          {error === 'reconnect_required' && 'Your Google Ads connection has expired. Please reconnect your account.'}
+          {!['access_denied', 'token_exchange_failed', 'userinfo_failed', 'reconnect_required'].includes(error) && 'An error occurred.'}
         </div>
       )}
 

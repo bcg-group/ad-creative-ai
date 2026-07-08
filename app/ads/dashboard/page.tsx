@@ -82,7 +82,7 @@ function DashboardContent() {
     try {
       const res = await fetch('/api/google-ads/campaigns')
       if (res.status === 401) {
-        window.location.href = '/ads/connect'
+        window.location.href = '/ads/connect?error=reconnect_required'
         return
       }
       const data = await res.json()

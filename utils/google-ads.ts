@@ -39,21 +39,31 @@ export async function getConnectedAccounts(userId: string): Promise<GoogleAdsAcc
 
   if (!tokens || tokens.length === 0) throw new Error('No Google Ads accounts connected')
 
-  const refreshed = await Promise.all(
+  const refreshed = (await Promise.all(
     tokens.map(async (t) => {
       const isExpired = new Date(t.expires_at) <= new Date(Date.now() + 60_000)
       if (!isExpired) return { ...t, access_token: t.access_token }
 
-      const newToken = await refreshAccessToken(t.refresh_token)
-      await supabase.from('google_ads_tokens').update({
-        access_token: newToken,
-        expires_at: new Date(Date.now() + 3600_000).toISOString(),
-        updated_at: new Date().toISOString(),
-      }).eq('user_id', userId).eq('google_account_id', t.google_account_id)
-
-      return { ...t, access_token: newToken }
+      try {
+        const newToken = await refreshAccessToken(t.refresh_token)
+        await supabase.from('google_ads_tokens').update({
+          access_token: newToken,
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('user_id', userId).eq('google_account_id', t.google_account_id)
+        return { ...t, access_token: newToken }
+      } catch {
+        // Token is invalid — remove it so connect page shows correct status
+        await supabase.from('google_ads_tokens')
+          .delete()
+          .eq('user_id', userId)
+          .eq('google_account_id', t.google_account_id)
+        return null
+      }
     })
-  )
+  )).filter(Boolean) as typeof tokens
+
+  if (refreshed.length === 0) throw new Error('No Google Ads accounts connected')
 
   return refreshed.map((t) => ({
     googleAccountId: t.google_account_id,
