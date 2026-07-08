@@ -119,7 +119,10 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
       'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
     },
   })
-  if (!res.ok) throw new Error('Failed to list accessible customers')
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(`${res.status}: ${JSON.stringify(err)}`)
+  }
   const data = await res.json()
   return (data.resourceNames ?? []).map((r: string) => r.replace('customers/', ''))
 }
