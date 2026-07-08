@@ -87,6 +87,10 @@ export default function Home() {
   const [creditsUsed, setCreditsUsed] = useState<number | null>(null)
   const [userPlan, setUserPlan] = useState<string | null>(null)
 
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [savedProjectName, setSavedProjectName] = useState('')
+
   const [urlInput, setUrlInput] = useState('')
   const [urlLoading, setUrlLoading] = useState(false)
   const [urlError, setUrlError] = useState('')
@@ -109,9 +113,11 @@ export default function Home() {
     Promise.all([
       supabase.from('profiles').select('plan').eq('id', user.id).single(),
       supabase.from('generations').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-    ]).then(([profileRes, countRes]) => {
+      supabase.from('projects').select('id, name').eq('user_id', user.id).order('created_at', { ascending: false }),
+    ]).then(([profileRes, countRes, projectsRes]) => {
       setUserPlan(profileRes.data?.plan ?? 'free')
       setCreditsUsed(countRes.count ?? 0)
+      setProjects(projectsRes.data ?? [])
     })
   }, [user])
 
@@ -246,17 +252,22 @@ export default function Home() {
     setLoading(true)
     setError('')
     setResult(null)
+    setSavedProjectName('')
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appName, category, platform, tone, targetUser, usps }),
+        body: JSON.stringify({ appName, category, platform, tone, targetUser, usps, projectId: selectedProjectId || null }),
       })
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error ?? 'Something went wrong.')
       if (data.usage?.creditsUsed !== undefined) setCreditsUsed(data.usage.creditsUsed)
       if (data.usage?.plan) setUserPlan(data.usage.plan)
       setResult(data.result)
+      if (selectedProjectId) {
+        const proj = projects.find((p) => p.id === selectedProjectId)
+        if (proj) setSavedProjectName(proj.name)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
@@ -341,6 +352,25 @@ export default function Home() {
               <h2 className="text-lg font-semibold text-gray-900">Your App</h2>
               <p className="text-sm text-gray-500 mt-0.5">Fill in details to generate ad copy</p>
             </div>
+
+            {/* Project selector */}
+            {user && projects.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Save to Project <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">— No project —</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Auto-fill from URL */}
             <div className="pb-1 border-b border-gray-100">
@@ -600,6 +630,17 @@ export default function Home() {
 
           {result && (
             <div className="space-y-4">
+              {savedProjectName && (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 text-sm text-green-700">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Saved to <span className="font-medium ml-1">{savedProjectName}</span>
+                  <a href={`/ads/projects/${selectedProjectId}`} className="ml-auto text-green-600 hover:underline font-medium">
+                    View project →
+                  </a>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-gray-900">
                   {result.variants.length} Variants &mdash; {platformLabel}

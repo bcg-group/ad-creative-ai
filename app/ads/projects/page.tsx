@@ -145,18 +145,20 @@ export default function ProjectsPage() {
         <div className="space-y-3">
           {projects.map((p) => (
             <div key={p.id} className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">{p.name}</p>
+              <a href={`/ads/projects/${p.id}`} className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 hover:text-blue-600 transition-colors">{p.name}</p>
                 <div className="flex items-center gap-3 mt-0.5">
                   {p.category && (
                     <span className="text-xs text-gray-400">{p.category}</span>
                   )}
                   {p.app_url && (
-                    <a href={p.app_url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-blue-500 hover:underline">Store link →</a>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <a href={p.app_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:underline">Store link →</a>
+                    </span>
                   )}
                 </div>
-              </div>
+              </a>
               <button
                 onClick={() => handleDelete(p.id)}
                 className="text-gray-300 hover:text-red-400 transition-colors"
