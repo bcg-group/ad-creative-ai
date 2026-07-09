@@ -74,6 +74,16 @@ export async function getConnectedAccounts(userId: string): Promise<GoogleAdsAcc
   }))
 }
 
+function makeHeaders(accessToken: string, loginCustomerId?: string): Record<string, string> {
+  const h: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+    'Content-Type': 'application/json',
+  }
+  if (loginCustomerId) h['login-customer-id'] = loginCustomerId.replace(/-/g, '')
+  return h
+}
+
 export async function googleAdsQuery(
   accessToken: string,
   customerId: string,
@@ -81,18 +91,9 @@ export async function googleAdsQuery(
   loginCustomerId?: string
 ): Promise<any[]> {
   const cleanId = customerId.replace(/-/g, '')
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-    'Content-Type': 'application/json',
-  }
-  if (loginCustomerId) {
-    headers['login-customer-id'] = loginCustomerId.replace(/-/g, '')
-  }
-
   const res = await fetch(`${API_BASE}/customers/${cleanId}/googleAds:searchStream`, {
     method: 'POST',
-    headers,
+    headers: makeHeaders(accessToken, loginCustomerId),
     body: JSON.stringify({ query }),
   })
 
@@ -111,6 +112,42 @@ export async function googleAdsQuery(
       if (batch.results) results.push(...batch.results)
     } catch {}
   }
+  return results
+}
+
+// Uses the paginated /search endpoint — more reliable for resource enumeration
+async function googleAdsSearch(
+  accessToken: string,
+  customerId: string,
+  query: string,
+  loginCustomerId?: string
+): Promise<any[]> {
+  const cleanId = customerId.replace(/-/g, '')
+  const results: any[] = []
+  let pageToken: string | undefined
+
+  do {
+    const body: any = { query, pageSize: 1000 }
+    if (pageToken) body.pageToken = pageToken
+
+    const res = await fetch(`${API_BASE}/customers/${cleanId}/googleAds:search`, {
+      method: 'POST',
+      headers: makeHeaders(accessToken, loginCustomerId),
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      let message = `${res.status}: ${errText.slice(0, 800)}`
+      try { message = JSON.parse(errText)?.error?.message ?? message } catch {}
+      throw new Error(message)
+    }
+
+    const data = await res.json()
+    if (data.results) results.push(...data.results)
+    pageToken = data.nextPageToken
+  } while (pageToken)
+
   return results
 }
 
@@ -135,12 +172,11 @@ export async function getClientAccountIds(
   managerId: string,
   loginCustomerId?: string
 ): Promise<string[]> {
-  const rows = await googleAdsQuery(
+  const rows = await googleAdsSearch(
     accessToken,
     managerId,
     `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status
-     FROM customer_client
-     LIMIT 1000`,
+     FROM customer_client`,
     loginCustomerId
   )
   return rows
@@ -154,12 +190,11 @@ export async function debugCustomerClients(
   managerId: string,
   loginCustomerId?: string
 ): Promise<any[]> {
-  return googleAdsQuery(
+  return googleAdsSearch(
     accessToken,
     managerId,
     `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status, customer_client.descriptive_name
-     FROM customer_client
-     LIMIT 1000`,
+     FROM customer_client`,
     loginCustomerId
   )
 }
