@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/api/google-ads/campaigns/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

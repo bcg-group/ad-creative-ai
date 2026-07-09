@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccountIds, debugCustomerClients } from '@/utils/google-ads'
+import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccountIds } from '@/utils/google-ads'
 
 const DATE_RANGE = 'LAST_30_DAYS'
 
@@ -81,6 +81,13 @@ export async function GET(req: NextRequest) {
         return
       }
 
+      // Run async tasks in batches to avoid hitting rate limits / timeouts
+      async function runBatched<T>(items: T[], batchSize: number, fn: (item: T) => Promise<void>) {
+        for (let i = 0; i < items.length; i += batchSize) {
+          await Promise.all(items.slice(i, i + batchSize).map(fn))
+        }
+      }
+
       // loginId is always the top-level MCC — stays fixed through recursion
       const processAsManager = async (managerId: string, loginId: string) => {
         let clientIds: string[]
@@ -92,35 +99,29 @@ export async function GET(req: NextRequest) {
         }
 
         if (clientIds.length === 0) {
-          // Diagnostic: dump raw customer_client rows to see what's actually in the MCC
-          try {
-            const raw = await debugCustomerClients(accessToken, managerId, loginId)
-            debugErrors.push(`[${managerId}] customer_client raw: ${JSON.stringify(raw.map(r => r.customerClient))}`)
-          } catch (e: any) {
-            debugErrors.push(`[${managerId}] manager has no client accounts (diagnostic failed: ${e?.message})`)
-          }
+          debugErrors.push(`[${managerId}] manager has no client accounts`)
           return
         }
 
+        debugErrors.push(`[${managerId}] found ${clientIds.length} client accounts`)
+
         if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
 
-        await Promise.all(
-          clientIds.map(async (clientId) => {
-            try {
-              const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, loginId)
-              for (const row of rows) {
-                allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
-              }
-            } catch (e: any) {
-              if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
-                // clientId is itself a sub-MCC — recurse with same top-level loginId
-                await processAsManager(clientId, loginId)
-              } else {
-                debugErrors.push(`[${clientId}] campaigns via MCC ${managerId}: ${e?.message}`)
-              }
+        await runBatched(clientIds, 5, async (clientId) => {
+          try {
+            const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, loginId)
+            for (const row of rows) {
+              allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
             }
-          })
-        )
+          } catch (e: any) {
+            if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
+              // clientId is itself a sub-MCC — recurse with same top-level loginId
+              await processAsManager(clientId, loginId)
+            } else {
+              debugErrors.push(`[${clientId}] campaigns via MCC ${managerId}: ${e?.message}`)
+            }
+          }
+        })
       }
 
       await Promise.all(
