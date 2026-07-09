@@ -127,7 +127,7 @@ async function googleAdsSearch(
   let pageToken: string | undefined
 
   do {
-    const body: any = { query, pageSize: 1000 }
+    const body: any = { query }
     if (pageToken) body.pageToken = pageToken
 
     const res = await fetch(`${API_BASE}/customers/${cleanId}/googleAds:search`, {
