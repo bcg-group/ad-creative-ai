@@ -129,19 +129,21 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
   return (data.resourceNames ?? []).map((r: string) => r.replace('customers/', ''))
 }
 
-// Returns direct client account IDs under a manager (MCC) account
+// Returns all client account IDs under a manager (MCC) account, including sub-MCCs
 export async function getClientAccountIds(
   accessToken: string,
-  managerId: string
+  managerId: string,
+  loginCustomerId?: string
 ): Promise<string[]> {
   const rows = await googleAdsQuery(
     accessToken,
     managerId,
     `SELECT customer_client.client_customer
      FROM customer_client
-     WHERE customer_client.manager = false
-       AND customer_client.status = 'ENABLED'
-     LIMIT 1000`
+     WHERE customer_client.status = 'ENABLED'
+       AND customer_client.level > 0
+     LIMIT 1000`,
+    loginCustomerId
   )
   return rows
     .map((r: any) => r.customerClient?.clientCustomer?.replace('customers/', ''))

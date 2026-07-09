@@ -24,7 +24,7 @@ const CAMPAIGN_QUERY = `
     AND segments.date DURING ${DATE_RANGE}
 `
 
-function rowToCampaign(row: any, googleAccountEmail: string, customerId: string, loginCustomerId?: string) {
+function rowToCampaign(row: any, googleAccountEmail: string, customerId: string) {
   const { campaign, customer, metrics } = row
   const spend = (metrics.costMicros ?? 0) / 1_000_000
   const conversions = metrics.conversions ?? 0
@@ -81,17 +81,19 @@ export async function GET(req: NextRequest) {
         return
       }
 
-      const processAsManager = async (customerId: string) => {
+      // loginId is always the top-level MCC — stays fixed through recursion
+      const processAsManager = async (managerId: string, loginId: string) => {
         let clientIds: string[]
         try {
-          clientIds = await getClientAccountIds(accessToken, customerId)
+          clientIds = await getClientAccountIds(accessToken, managerId, loginId)
         } catch (e: any) {
-          debugErrors.push(`[${customerId}] getClientAccountIds: ${e?.message}`)
+          debugErrors.push(`[${managerId}] getClientAccountIds: ${e?.message}`)
           return
         }
 
         if (clientIds.length === 0) {
-          debugErrors.push(`[${customerId}] manager has no client accounts`)
+          debugErrors.push(`[${managerId}] manager has no client accounts`)
+          return
         }
 
         if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
@@ -99,12 +101,17 @@ export async function GET(req: NextRequest) {
         await Promise.all(
           clientIds.map(async (clientId) => {
             try {
-              const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, customerId)
+              const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, loginId)
               for (const row of rows) {
                 allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
               }
             } catch (e: any) {
-              debugErrors.push(`[${clientId}] campaigns via MCC ${customerId}: ${e?.message}`)
+              if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
+                // clientId is itself a sub-MCC — recurse with same top-level loginId
+                await processAsManager(clientId, loginId)
+              } else {
+                debugErrors.push(`[${clientId}] campaigns via MCC ${managerId}: ${e?.message}`)
+              }
             }
           })
         )
@@ -120,6 +127,10 @@ export async function GET(req: NextRequest) {
             `)
             isManager = rows[0]?.customer?.manager ?? false
           } catch (e: any) {
+            if (String(e?.message).includes('CUSTOMER_NOT_ENABLED')) {
+              // Deactivated account — skip silently
+              return
+            }
             debugErrors.push(`[${customerId}] customer.manager check: ${e?.message}`)
             return
           }
@@ -135,7 +146,7 @@ export async function GET(req: NextRequest) {
               if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
                 // customer.manager check said false but Google Ads treats this as a
                 // manager account for metrics purposes — retry by enumerating clients.
-                await processAsManager(customerId)
+                await processAsManager(customerId, customerId)
               } else {
                 debugErrors.push(`[${customerId}] campaigns query: ${e?.message}`)
               }
@@ -144,7 +155,7 @@ export async function GET(req: NextRequest) {
           }
 
           // Manager account — enumerate client accounts
-          await processAsManager(customerId)
+          await processAsManager(customerId, customerId)
         })
       )
     })
