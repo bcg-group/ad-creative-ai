@@ -138,14 +138,28 @@ export async function getClientAccountIds(
   const rows = await googleAdsQuery(
     accessToken,
     managerId,
-    `SELECT customer_client.client_customer
+    `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status
      FROM customer_client
-     WHERE customer_client.status = 'ENABLED'
-       AND customer_client.level > 0
      LIMIT 1000`,
     loginCustomerId
   )
   return rows
     .map((r: any) => r.customerClient?.clientCustomer?.replace('customers/', ''))
     .filter(Boolean)
+}
+
+// Debug: returns full customer_client rows for diagnostics
+export async function debugCustomerClients(
+  accessToken: string,
+  managerId: string,
+  loginCustomerId?: string
+): Promise<any[]> {
+  return googleAdsQuery(
+    accessToken,
+    managerId,
+    `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status, customer_client.descriptive_name
+     FROM customer_client
+     LIMIT 1000`,
+    loginCustomerId
+  )
 }

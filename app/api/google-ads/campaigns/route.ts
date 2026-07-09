@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccountIds } from '@/utils/google-ads'
+import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccountIds, debugCustomerClients } from '@/utils/google-ads'
 
 const DATE_RANGE = 'LAST_30_DAYS'
 
@@ -92,7 +92,13 @@ export async function GET(req: NextRequest) {
         }
 
         if (clientIds.length === 0) {
-          debugErrors.push(`[${managerId}] manager has no client accounts`)
+          // Diagnostic: dump raw customer_client rows to see what's actually in the MCC
+          try {
+            const raw = await debugCustomerClients(accessToken, managerId, loginId)
+            debugErrors.push(`[${managerId}] customer_client raw: ${JSON.stringify(raw.map(r => r.customerClient))}`)
+          } catch (e: any) {
+            debugErrors.push(`[${managerId}] manager has no client accounts (diagnostic failed: ${e?.message})`)
+          }
           return
         }
 
