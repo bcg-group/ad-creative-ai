@@ -81,6 +81,35 @@ export async function GET(req: NextRequest) {
         return
       }
 
+      const processAsManager = async (customerId: string) => {
+        let clientIds: string[]
+        try {
+          clientIds = await getClientAccountIds(accessToken, customerId)
+        } catch (e: any) {
+          debugErrors.push(`[${customerId}] getClientAccountIds: ${e?.message}`)
+          return
+        }
+
+        if (clientIds.length === 0) {
+          debugErrors.push(`[${customerId}] manager has no client accounts`)
+        }
+
+        if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
+
+        await Promise.all(
+          clientIds.map(async (clientId) => {
+            try {
+              const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, customerId)
+              for (const row of rows) {
+                allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
+              }
+            } catch (e: any) {
+              debugErrors.push(`[${clientId}] campaigns via MCC ${customerId}: ${e?.message}`)
+            }
+          })
+        )
+      }
+
       await Promise.all(
         topLevelIds.map(async (customerId) => {
           // Check if this account is a manager (MCC)
@@ -103,38 +132,19 @@ export async function GET(req: NextRequest) {
                 allCampaigns.push(rowToCampaign(row, googleAccountEmail, customerId))
               }
             } catch (e: any) {
-              debugErrors.push(`[${customerId}] campaigns query: ${e?.message}`)
+              if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
+                // customer.manager check said false but Google Ads treats this as a
+                // manager account for metrics purposes — retry by enumerating clients.
+                await processAsManager(customerId)
+              } else {
+                debugErrors.push(`[${customerId}] campaigns query: ${e?.message}`)
+              }
             }
             return
           }
 
           // Manager account — enumerate client accounts
-          let clientIds: string[]
-          try {
-            clientIds = await getClientAccountIds(accessToken, customerId)
-          } catch (e: any) {
-            debugErrors.push(`[${customerId}] getClientAccountIds: ${e?.message}`)
-            return
-          }
-
-          if (clientIds.length === 0) {
-            debugErrors.push(`[${customerId}] manager has no client accounts`)
-          }
-
-          if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
-
-          await Promise.all(
-            clientIds.map(async (clientId) => {
-              try {
-                const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, customerId)
-                for (const row of rows) {
-                  allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
-                }
-              } catch (e: any) {
-                debugErrors.push(`[${clientId}] campaigns via MCC ${customerId}: ${e?.message}`)
-              }
-            })
-          )
+          await processAsManager(customerId)
         })
       )
     })
