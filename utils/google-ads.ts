@@ -166,18 +166,21 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
   return (data.resourceNames ?? []).map((r: string) => r.replace('customers/', ''))
 }
 
-// Returns all client account IDs under a manager (MCC) account, including sub-MCCs
+// Returns all client account IDs under a manager (MCC) account, including sub-MCCs.
+// Does not pass login-customer-id when querying the MCC itself (only needed for sub-accounts).
 export async function getClientAccountIds(
   accessToken: string,
   managerId: string,
   loginCustomerId?: string
 ): Promise<string[]> {
+  // login-customer-id is only needed when managerId != loginCustomerId (sub-MCC via super-MCC)
+  const effectiveLogin = loginCustomerId !== managerId ? loginCustomerId : undefined
   const rows = await googleAdsSearch(
     accessToken,
     managerId,
-    `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status
+    `SELECT customer_client.client_customer, customer_client.manager, customer_client.status
      FROM customer_client`,
-    loginCustomerId
+    effectiveLogin
   )
   return rows
     .map((r: any) => r.customerClient?.clientCustomer?.replace('customers/', ''))
@@ -190,11 +193,12 @@ export async function debugCustomerClients(
   managerId: string,
   loginCustomerId?: string
 ): Promise<any[]> {
+  const effectiveLogin = loginCustomerId !== managerId ? loginCustomerId : undefined
   return googleAdsSearch(
     accessToken,
     managerId,
-    `SELECT customer_client.client_customer, customer_client.level, customer_client.manager, customer_client.status, customer_client.descriptive_name
+    `SELECT customer_client.client_customer, customer_client.manager, customer_client.status, customer_client.descriptive_name
      FROM customer_client`,
-    loginCustomerId
+    effectiveLogin
   )
 }
