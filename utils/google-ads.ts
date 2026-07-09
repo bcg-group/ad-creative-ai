@@ -138,8 +138,14 @@ async function googleAdsSearch(
 
     if (!res.ok) {
       const errText = await res.text()
-      let message = `${res.status}: ${errText.slice(0, 800)}`
-      try { message = JSON.parse(errText)?.error?.message ?? message } catch {}
+      let message = `${res.status}: ${errText.slice(0, 1200)}`
+      try {
+        const parsed = JSON.parse(errText)
+        const gErr = parsed?.error?.details?.[0]?.errors?.[0]
+        message = gErr
+          ? `${gErr.errorCode ? JSON.stringify(gErr.errorCode) : ''} ${gErr.message ?? ''}`.trim()
+          : (parsed?.error?.message ?? message)
+      } catch {}
       throw new Error(message)
     }
 
@@ -167,19 +173,23 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
 }
 
 // Returns all client account IDs under a manager (MCC) account, including sub-MCCs.
-// Does not pass login-customer-id when querying the MCC itself (only needed for sub-accounts).
+// Uses exact query from Google Ads API docs; login-customer-id omitted per docs guidance.
 export async function getClientAccountIds(
   accessToken: string,
   managerId: string,
   loginCustomerId?: string
 ): Promise<string[]> {
-  // login-customer-id is only needed when managerId != loginCustomerId (sub-MCC via super-MCC)
+  // Per docs: login-customer-id is optional for customer_client queries.
+  // Only pass it when querying a sub-MCC through a different super-MCC.
   const effectiveLogin = loginCustomerId !== managerId ? loginCustomerId : undefined
   const rows = await googleAdsSearch(
     accessToken,
     managerId,
-    `SELECT customer_client.client_customer, customer_client.manager, customer_client.status
-     FROM customer_client`,
+    `SELECT customer_client.client_customer, customer_client.level,
+     customer_client.manager, customer_client.descriptive_name,
+     customer_client.id
+     FROM customer_client
+     WHERE customer_client.level <= 1`,
     effectiveLogin
   )
   return rows
@@ -197,7 +207,9 @@ export async function debugCustomerClients(
   return googleAdsSearch(
     accessToken,
     managerId,
-    `SELECT customer_client.client_customer, customer_client.manager, customer_client.status, customer_client.descriptive_name
+    `SELECT customer_client.client_customer, customer_client.level,
+     customer_client.manager, customer_client.descriptive_name,
+     customer_client.id
      FROM customer_client`,
     effectiveLogin
   )
