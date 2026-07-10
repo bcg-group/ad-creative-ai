@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccountIds } from '@/utils/google-ads'
+import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccounts } from '@/utils/google-ads'
 
 const DATE_RANGE = 'LAST_30_DAYS'
 
@@ -88,37 +88,48 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Guard against manager cycles / re-processing the same MCC
+      const visitedManagers = new Set<string>()
+
       // loginId is always the top-level MCC — stays fixed through recursion
       const processAsManager = async (managerId: string, loginId: string) => {
-        let clientIds: string[]
+        if (visitedManagers.has(managerId)) return
+        visitedManagers.add(managerId)
+
+        let clients
         try {
-          clientIds = await getClientAccountIds(accessToken, managerId, loginId)
+          clients = await getClientAccounts(accessToken, managerId, loginId)
         } catch (e: any) {
-          debugErrors.push(`[${managerId}] getClientAccountIds: ${e?.message}`)
+          debugErrors.push(`[${managerId}] getClientAccounts: ${e?.message}`)
           return
         }
 
-        if (clientIds.length === 0) {
+        if (clients.length === 0) {
           debugErrors.push(`[${managerId}] manager has no client accounts`)
           return
         }
 
-        debugErrors.push(`[${managerId}] found ${clientIds.length} client accounts`)
+        const subManagers = clients.filter((c) => c.isManager)
+        let leafClients = clients.filter((c) => !c.isManager)
+        debugErrors.push(`[${managerId}] found ${leafClients.length} client accounts, ${subManagers.length} sub-MCCs`)
 
-        if (filterCustomerId) clientIds = clientIds.filter((id) => id === filterCustomerId)
+        if (filterCustomerId) leafClients = leafClients.filter((c) => c.id === filterCustomerId)
 
-        await runBatched(clientIds, 5, async (clientId) => {
+        // Descend into sub-MCCs (keep the top-level MCC as login-customer-id)
+        await Promise.all(subManagers.map((m) => processAsManager(m.id, loginId)))
+
+        await runBatched(leafClients, 5, async (client) => {
           try {
-            const rows = await googleAdsQuery(accessToken, clientId, CAMPAIGN_QUERY, loginId)
+            const rows = await googleAdsQuery(accessToken, client.id, CAMPAIGN_QUERY, loginId)
             for (const row of rows) {
-              allCampaigns.push(rowToCampaign(row, googleAccountEmail, clientId))
+              allCampaigns.push(rowToCampaign(row, googleAccountEmail, client.id))
             }
           } catch (e: any) {
             if (String(e?.message).includes('REQUESTED_METRICS_FOR_MANAGER')) {
-              // clientId is itself a sub-MCC — recurse with same top-level loginId
-              await processAsManager(clientId, loginId)
+              // customer_client said not a manager but the API disagrees — recurse (visited-guarded)
+              await processAsManager(client.id, loginId)
             } else {
-              debugErrors.push(`[${clientId}] campaigns via MCC ${managerId}: ${e?.message}`)
+              debugErrors.push(`[${client.id}] campaigns via MCC ${managerId}: ${e?.message}`)
             }
           }
         })

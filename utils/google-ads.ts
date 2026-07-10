@@ -172,13 +172,20 @@ export async function listAccessibleCustomers(accessToken: string): Promise<stri
   return (data.resourceNames ?? []).map((r: string) => r.replace('customers/', ''))
 }
 
-// Returns all client account IDs under a manager (MCC) account, including sub-MCCs.
-// Uses exact query from Google Ads API docs; login-customer-id omitted per docs guidance.
-export async function getClientAccountIds(
+export type ClientAccount = {
+  id: string
+  isManager: boolean
+  name: string | null
+}
+
+// Returns direct children (level 1) of a manager (MCC) account.
+// Level 0 is the manager itself — must be excluded, otherwise campaign queries
+// hit REQUESTED_METRICS_FOR_MANAGER on the MCC and recurse forever.
+export async function getClientAccounts(
   accessToken: string,
   managerId: string,
   loginCustomerId?: string
-): Promise<string[]> {
+): Promise<ClientAccount[]> {
   // Per docs: login-customer-id is optional for customer_client queries.
   // Only pass it when querying a sub-MCC through a different super-MCC.
   const effectiveLogin = loginCustomerId !== managerId ? loginCustomerId : undefined
@@ -187,14 +194,28 @@ export async function getClientAccountIds(
     managerId,
     `SELECT customer_client.client_customer, customer_client.level,
      customer_client.manager, customer_client.descriptive_name,
-     customer_client.id
+     customer_client.status, customer_client.id
      FROM customer_client
-     WHERE customer_client.level <= 1`,
+     WHERE customer_client.level = 1
+       AND customer_client.status = 'ENABLED'`,
     effectiveLogin
   )
   return rows
-    .map((r: any) => r.customerClient?.clientCustomer?.replace('customers/', ''))
-    .filter(Boolean)
+    .map((r: any) => ({
+      id: (r.customerClient?.clientCustomer ?? '').replace('customers/', ''),
+      isManager: r.customerClient?.manager ?? false,
+      name: r.customerClient?.descriptiveName ?? null,
+    }))
+    .filter((c: ClientAccount) => c.id)
+}
+
+export async function getClientAccountIds(
+  accessToken: string,
+  managerId: string,
+  loginCustomerId?: string
+): Promise<string[]> {
+  const clients = await getClientAccounts(accessToken, managerId, loginCustomerId)
+  return clients.map((c) => c.id)
 }
 
 // Debug: returns full customer_client rows for diagnostics
