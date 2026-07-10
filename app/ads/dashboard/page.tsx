@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import TrendSection from './TrendCharts'
 
 const DEMO_CAMPAIGNS: Campaign[] = [
   { customerId: '111', accountName: 'MyApp – VN', currency: 'USD', campaignId: '1', campaignName: 'UAC_iOS_VN_Installs_Jun', status: 'ENABLED', labels: [], impressions: 1820430, clicks: 24610, spend: 3241.85, conversions: 1820, cpi: 1.78, roas: 3.12, ctr: 1.35 },
@@ -193,6 +194,9 @@ function DashboardContent() {
           Google Ads connected successfully! Loading campaign data...
         </div>
       )}
+
+      {/* Daily trend charts (from snapshots) */}
+      {!isDemo && <TrendSection />}
 
       {/* Summary cards */}
       {!loading && campaigns.length > 0 && (

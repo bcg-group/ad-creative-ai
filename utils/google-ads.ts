@@ -217,6 +217,63 @@ export async function getClientAccountIds(
   return clients.map((c) => c.id)
 }
 
+export type LeafAccount = {
+  customerId: string
+  // Top-level MCC to send as login-customer-id; undefined for directly-accessible accounts
+  loginId?: string
+}
+
+// Resolves every queryable (non-manager) account the token can reach,
+// descending through MCC hierarchies. Mirrors the traversal in the
+// campaigns route; used by the snapshot cron.
+export async function collectLeafAccounts(
+  accessToken: string,
+  debugErrors?: string[]
+): Promise<LeafAccount[]> {
+  const leaves: LeafAccount[] = []
+  const visitedManagers = new Set<string>()
+
+  const descend = async (managerId: string, loginId: string) => {
+    if (visitedManagers.has(managerId)) return
+    visitedManagers.add(managerId)
+
+    let clients: ClientAccount[]
+    try {
+      clients = await getClientAccounts(accessToken, managerId, loginId)
+    } catch (e: any) {
+      debugErrors?.push(`[${managerId}] getClientAccounts: ${e?.message}`)
+      return
+    }
+
+    for (const c of clients) {
+      if (c.isManager) await descend(c.id, loginId)
+      else leaves.push({ customerId: c.id, loginId })
+    }
+  }
+
+  const topLevelIds = await listAccessibleCustomers(accessToken)
+  await Promise.all(
+    topLevelIds.map(async (customerId) => {
+      let isManager = false
+      try {
+        const rows = await googleAdsQuery(accessToken, customerId, `
+          SELECT customer.manager FROM customer LIMIT 1
+        `)
+        isManager = rows[0]?.customer?.manager ?? false
+      } catch (e: any) {
+        if (!String(e?.message).includes('CUSTOMER_NOT_ENABLED')) {
+          debugErrors?.push(`[${customerId}] customer.manager check: ${e?.message}`)
+        }
+        return
+      }
+      if (isManager) await descend(customerId, customerId)
+      else leaves.push({ customerId })
+    })
+  )
+
+  return leaves
+}
+
 // Debug: returns full customer_client rows for diagnostics
 export async function debugCustomerClients(
   accessToken: string,
