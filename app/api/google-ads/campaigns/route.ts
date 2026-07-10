@@ -26,9 +26,10 @@ const CAMPAIGN_QUERY = `
 
 function rowToCampaign(row: any, googleAccountEmail: string, customerId: string) {
   const { campaign, customer, metrics } = row
-  const spend = (metrics.costMicros ?? 0) / 1_000_000
-  const conversions = metrics.conversions ?? 0
-  const conversionValue = metrics.conversionsValue ?? 0
+  // int64 metrics arrive as JSON strings — coerce before math
+  const spend = Number(metrics.costMicros ?? 0) / 1_000_000
+  const conversions = Number(metrics.conversions ?? 0)
+  const conversionValue = Number(metrics.conversionsValue ?? 0)
   return {
     googleAccountEmail,
     customerId,
@@ -38,8 +39,8 @@ function rowToCampaign(row: any, googleAccountEmail: string, customerId: string)
     campaignName: campaign.name,
     status: campaign.status,
     labels: campaign.labels ?? [],
-    impressions: metrics.impressions ?? 0,
-    clicks: metrics.clicks ?? 0,
+    impressions: Number(metrics.impressions ?? 0),
+    clicks: Number(metrics.clicks ?? 0),
     spend: Math.round(spend * 100) / 100,
     conversions: Math.round(conversions * 10) / 10,
     cpi: conversions > 0 ? Math.round(spend / conversions * 100) / 100 : null,

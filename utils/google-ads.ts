@@ -104,13 +104,12 @@ export async function googleAdsQuery(
     throw new Error(message)
   }
 
-  const lines = await res.text()
+  // REST searchStream returns one JSON array of batches (not NDJSON)
+  const text = await res.text()
   const results: any[] = []
-  for (const line of lines.split('\n').filter(Boolean)) {
-    try {
-      const batch = JSON.parse(line)
-      if (batch.results) results.push(...batch.results)
-    } catch {}
+  const data = JSON.parse(text)
+  for (const batch of Array.isArray(data) ? data : [data]) {
+    if (batch?.results) results.push(...batch.results)
   }
   return results
 }
