@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import AssetReportModal, { normalizeText } from './AssetReport'
 
 type Project = {
   id: string
@@ -187,6 +188,22 @@ export default function ProjectDetailPage() {
   const [links, setLinks] = useState<CampaignLink[]>([])
   const [loading, setLoading] = useState(true)
   const [linkingGenId, setLinkingGenId] = useState<string | null>(null)
+  const [assetLink, setAssetLink] = useState<CampaignLink | null>(null)
+
+  // All texts generated for this project (Google platform) — used to badge
+  // matching assets as "AI" in the asset report
+  const aiTexts = useMemo(() => {
+    const set = new Set<string>()
+    for (const gen of generations) {
+      if (gen.platform !== 'google') continue
+      for (const v of gen.result?.variants ?? []) {
+        for (const t of [...(v.headlines ?? []), ...(v.descriptions ?? [])]) {
+          if (typeof t === 'string') set.add(normalizeText(t))
+        }
+      }
+    }
+    return set
+  }, [generations])
 
   useEffect(() => {
     async function load() {
@@ -312,6 +329,15 @@ export default function ProjectDetailPage() {
                         {lnk.google_account_email && (
                           <span className="text-gray-400 ml-auto flex-shrink-0">{lnk.google_account_email}</span>
                         )}
+                        <button
+                          onClick={() => setAssetLink(lnk)}
+                          className="flex-shrink-0 text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m4 6V7m4 10v-3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          Assets
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -331,6 +357,18 @@ export default function ProjectDetailPage() {
             )
           })}
         </div>
+      )}
+
+      {/* Asset report modal */}
+      {assetLink && (
+        <AssetReportModal
+          campaignId={assetLink.campaign_id}
+          campaignName={assetLink.campaign_name ?? assetLink.campaign_id}
+          customerId={assetLink.customer_id}
+          googleAccountEmail={assetLink.google_account_email}
+          aiTexts={aiTexts}
+          onClose={() => setAssetLink(null)}
+        />
       )}
 
       {/* Link campaign modal */}
