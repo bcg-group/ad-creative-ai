@@ -177,19 +177,24 @@ export type ClientAccount = {
   name: string | null
   currency: string | null
   timezone: string | null
+  status: string | null
 }
 
 // Returns direct children (level 1) of a manager (MCC) account.
 // Level 0 is the manager itself — must be excluded, otherwise campaign queries
 // hit REQUESTED_METRICS_FOR_MANAGER on the MCC and recurse forever.
+// By default only ENABLED clients are returned (dashboard/snapshot only care
+// about active accounts); pass includeDisabled to list suspended/cancelled ones.
 export async function getClientAccounts(
   accessToken: string,
   managerId: string,
-  loginCustomerId?: string
+  loginCustomerId?: string,
+  opts?: { includeDisabled?: boolean }
 ): Promise<ClientAccount[]> {
   // Per docs: login-customer-id is optional for customer_client queries.
   // Only pass it when querying a sub-MCC through a different super-MCC.
   const effectiveLogin = loginCustomerId !== managerId ? loginCustomerId : undefined
+  const statusFilter = opts?.includeDisabled ? '' : `\n       AND customer_client.status = 'ENABLED'`
   const rows = await googleAdsSearch(
     accessToken,
     managerId,
@@ -198,8 +203,7 @@ export async function getClientAccounts(
      customer_client.status, customer_client.id,
      customer_client.currency_code, customer_client.time_zone
      FROM customer_client
-     WHERE customer_client.level = 1
-       AND customer_client.status = 'ENABLED'`,
+     WHERE customer_client.level = 1${statusFilter}`,
     effectiveLogin
   )
   return rows
@@ -209,6 +213,7 @@ export async function getClientAccounts(
       name: r.customerClient?.descriptiveName ?? null,
       currency: r.customerClient?.currencyCode ?? null,
       timezone: r.customerClient?.timeZone ?? null,
+      status: r.customerClient?.status ?? null,
     }))
     .filter((c: ClientAccount) => c.id)
 }
@@ -309,7 +314,7 @@ export async function collectAccountTree(
 
     let clients: ClientAccount[]
     try {
-      clients = await getClientAccounts(accessToken, managerId, loginId)
+      clients = await getClientAccounts(accessToken, managerId, loginId, { includeDisabled: true })
     } catch (e: any) {
       debugErrors?.push(`[${managerId}] getClientAccounts: ${e?.message}`)
       return
@@ -323,13 +328,14 @@ export async function collectAccountTree(
           isManager: c.isManager,
           currency: c.currency,
           timezone: c.timezone,
-          status: 'ENABLED', // customer_client query filters on ENABLED
+          status: c.status,
           parentCustomerId: managerId,
           loginCustomerId: loginId,
           level,
         })
       }
-      if (c.isManager) await descend(c.id, loginId, level + 1)
+      // Only descend into active managers — disabled MCCs reject child queries
+      if (c.isManager && c.status === 'ENABLED') await descend(c.id, loginId, level + 1)
     }
   }
 
