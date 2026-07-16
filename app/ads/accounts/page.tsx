@@ -69,8 +69,23 @@ export default function AccountsPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [toggling, setToggling] = useState<string | null>(null)
+  // Which Google-login sections are expanded, and which MCC subtrees are collapsed
+  const [openLogins, setOpenLogins] = useState<Set<string>>(new Set())
+  const [collapsedManagers, setCollapsedManagers] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
+
+  const toggleLogin = (email: string) => setOpenLogins((prev) => {
+    const next = new Set(prev)
+    next.has(email) ? next.delete(email) : next.add(email)
+    return next
+  })
+
+  const toggleManager = (customerId: string) => setCollapsedManagers((prev) => {
+    const next = new Set(prev)
+    next.has(customerId) ? next.delete(customerId) : next.add(customerId)
+    return next
+  })
 
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -91,6 +106,8 @@ export default function AccountsPage() {
 
     setConnections(tokens ?? [])
     setAccounts((adAccounts as AdAccount[]) ?? [])
+    // Open the first login by default; keep the rest collapsed for a compact view
+    setOpenLogins((prev) => prev.size > 0 ? prev : new Set(tokens?.[0] ? [tokens[0].google_account_email] : []))
     setLoading(false)
   }
 
@@ -166,21 +183,21 @@ export default function AccountsPage() {
     ? accounts.reduce((max, a) => a.last_synced_at > max ? a.last_synced_at : max, accounts[0].last_synced_at)
     : null
 
-  // DFS a login group into an ordered [account, depth] list so managers sit
-  // above their indented children.
-  const flattenTree = (groupAccounts: AdAccount[]): { account: AdAccount; depth: number }[] => {
-    const out: { account: AdAccount; depth: number }[] = []
-    const roots = groupAccounts.filter((a) => !a.parent_customer_id)
+  // DFS a login group into an ordered list so managers sit above their indented
+  // children. hasChildren drives the collapse chevron; collapsed MCCs hide their
+  // subtree. Accounts whose parent isn't in the group are treated as roots.
+  const flattenTree = (groupAccounts: AdAccount[]): { account: AdAccount; depth: number; hasChildren: boolean }[] => {
+    const out: { account: AdAccount; depth: number; hasChildren: boolean }[] = []
+    const inGroup = new Set(groupAccounts.map((a) => a.customer_id))
+    const roots = groupAccounts.filter((a) => !a.parent_customer_id || !inGroup.has(a.parent_customer_id))
     const walk = (node: AdAccount, depth: number) => {
-      out.push({ account: node, depth })
       const kids = (childrenMap.get(node.customer_id) ?? [])
         .filter((k) => k.google_account_email === node.google_account_email)
+      out.push({ account: node, depth, hasChildren: kids.length > 0 })
+      if (collapsedManagers.has(node.customer_id)) return
       for (const k of kids) walk(k, depth + 1)
     }
     for (const r of roots) walk(r, 0)
-    // Orphans (parent not in this group) — append flat so nothing is hidden
-    const shown = new Set(out.map((o) => o.account.customer_id))
-    for (const a of groupAccounts) if (!shown.has(a.customer_id)) out.push({ account: a, depth: 0 })
     return out
   }
 
@@ -247,11 +264,19 @@ export default function AccountsPage() {
           {connections.map(({ google_account_email }) => {
             const groupAccounts = accounts.filter((a) => a.google_account_email === google_account_email)
             const trackedCount = groupAccounts.filter((a) => a.tracked && !a.is_manager).length
-            const flat = flattenTree(groupAccounts)
+            const activeCount = groupAccounts.filter((a) => (a.status ?? '').toUpperCase() === 'ENABLED' && !a.is_manager).length
+            const isOpen = openLogins.has(google_account_email)
+            const flat = isOpen ? flattenTree(groupAccounts) : []
             return (
               <div key={google_account_email} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 flex items-center justify-between border-b border-gray-100">
+                <button
+                  onClick={() => toggleLogin(google_account_email)}
+                  className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between border-b border-gray-100 text-left transition-colors"
+                >
                   <div className="flex items-center gap-2.5">
+                    <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                     <div className="w-7 h-7 bg-green-50 rounded-full flex items-center justify-center flex-shrink-0">
                       <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -260,11 +285,11 @@ export default function AccountsPage() {
                     <p className="text-sm font-medium text-gray-900">{google_account_email}</p>
                   </div>
                   <p className="text-xs text-gray-400">
-                    {groupAccounts.length} tài khoản · {trackedCount} đang theo dõi
+                    {groupAccounts.length} tài khoản · {activeCount} active · {trackedCount} đang theo dõi
                   </p>
-                </div>
+                </button>
 
-                {flat.length === 0 ? (
+                {!isOpen ? null : flat.length === 0 ? (
                   <p className="px-4 py-4 text-sm text-gray-400">Không tìm thấy tài khoản cho login này.</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -282,9 +307,10 @@ export default function AccountsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {flat.map(({ account, depth }) => {
+                        {flat.map(({ account, depth, hasChildren }) => {
                           const st = statusDisplay(account.status)
                           const bl = billingDisplay(account.billing_status)
+                          const collapsed = collapsedManagers.has(account.customer_id)
                           return (
                             <tr
                               key={account.customer_id}
@@ -292,18 +318,38 @@ export default function AccountsPage() {
                             >
                               <td className="px-4 py-2.5" style={{ paddingLeft: `${16 + depth * 22}px` }}>
                                 <div className="flex items-center gap-2">
+                                  {hasChildren ? (
+                                    <button
+                                      onClick={() => toggleManager(account.customer_id)}
+                                      title={collapsed ? 'Mở rộng' : 'Thu gọn'}
+                                      className="p-0.5 -ml-1 rounded hover:bg-gray-200 flex-shrink-0"
+                                    >
+                                      <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${collapsed ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    </button>
+                                  ) : (
+                                    <span className="w-3.5 flex-shrink-0" />
+                                  )}
                                   {account.is_manager ? (
                                     <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                         d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                                     </svg>
                                   ) : (
-                                    <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    <svg className="w-4 h-4 text-blue-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                      <circle cx="10" cy="10" r="4" />
                                     </svg>
                                   )}
                                   <div>
-                                    <div className="font-medium text-blue-600">{formatCustomerId(account.customer_id)}</div>
+                                    <div className="font-medium text-blue-600">
+                                      {formatCustomerId(account.customer_id)}
+                                      {hasChildren && collapsed && (
+                                        <span className="ml-1.5 text-xs font-normal text-gray-400">
+                                          ({(childrenMap.get(account.customer_id) ?? []).length})
+                                        </span>
+                                      )}
+                                    </div>
                                     {account.name && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{account.name}</div>}
                                   </div>
                                 </div>
