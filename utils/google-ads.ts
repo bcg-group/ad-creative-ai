@@ -175,6 +175,8 @@ export type ClientAccount = {
   id: string
   isManager: boolean
   name: string | null
+  currency: string | null
+  timezone: string | null
 }
 
 // Returns direct children (level 1) of a manager (MCC) account.
@@ -193,7 +195,8 @@ export async function getClientAccounts(
     managerId,
     `SELECT customer_client.client_customer, customer_client.level,
      customer_client.manager, customer_client.descriptive_name,
-     customer_client.status, customer_client.id
+     customer_client.status, customer_client.id,
+     customer_client.currency_code, customer_client.time_zone
      FROM customer_client
      WHERE customer_client.level = 1
        AND customer_client.status = 'ENABLED'`,
@@ -204,6 +207,8 @@ export async function getClientAccounts(
       id: (r.customerClient?.clientCustomer ?? '').replace('customers/', ''),
       isManager: r.customerClient?.manager ?? false,
       name: r.customerClient?.descriptiveName ?? null,
+      currency: r.customerClient?.currencyCode ?? null,
+      timezone: r.customerClient?.timeZone ?? null,
     }))
     .filter((c: ClientAccount) => c.id)
 }
@@ -272,6 +277,97 @@ export async function collectLeafAccounts(
   )
 
   return leaves
+}
+
+export type AccountNode = {
+  customerId: string
+  name: string | null
+  isManager: boolean
+  currency: string | null
+  timezone: string | null
+  status: string | null
+  // Direct parent MCC; null for directly-accessible (top-level) accounts
+  parentCustomerId: string | null
+  // Top-level MCC to send as login-customer-id; null for direct accounts
+  loginCustomerId: string | null
+  level: number
+}
+
+// Full account tree (managers included) with metadata — used to sync the
+// ad_accounts table. Same traversal as collectLeafAccounts but keeps
+// hierarchy info so the accounts page can render the MCC tree from DB.
+export async function collectAccountTree(
+  accessToken: string,
+  debugErrors?: string[]
+): Promise<AccountNode[]> {
+  const nodes = new Map<string, AccountNode>()
+  const visitedManagers = new Set<string>()
+
+  const descend = async (managerId: string, loginId: string, level: number) => {
+    if (visitedManagers.has(managerId)) return
+    visitedManagers.add(managerId)
+
+    let clients: ClientAccount[]
+    try {
+      clients = await getClientAccounts(accessToken, managerId, loginId)
+    } catch (e: any) {
+      debugErrors?.push(`[${managerId}] getClientAccounts: ${e?.message}`)
+      return
+    }
+
+    for (const c of clients) {
+      if (!nodes.has(c.id)) {
+        nodes.set(c.id, {
+          customerId: c.id,
+          name: c.name,
+          isManager: c.isManager,
+          currency: c.currency,
+          timezone: c.timezone,
+          status: 'ENABLED', // customer_client query filters on ENABLED
+          parentCustomerId: managerId,
+          loginCustomerId: loginId,
+          level,
+        })
+      }
+      if (c.isManager) await descend(c.id, loginId, level + 1)
+    }
+  }
+
+  const topLevelIds = await listAccessibleCustomers(accessToken)
+  await Promise.all(
+    topLevelIds.map(async (customerId) => {
+      let c: any
+      try {
+        const rows = await googleAdsQuery(accessToken, customerId, `
+          SELECT customer.id, customer.descriptive_name, customer.manager,
+                 customer.currency_code, customer.time_zone, customer.status
+          FROM customer LIMIT 1
+        `)
+        c = rows[0]?.customer
+      } catch (e: any) {
+        if (!String(e?.message).includes('CUSTOMER_NOT_ENABLED')) {
+          debugErrors?.push(`[${customerId}] customer info: ${e?.message}`)
+        }
+        return
+      }
+      if (!c) return
+
+      nodes.set(customerId, {
+        customerId,
+        name: c.descriptiveName ?? null,
+        isManager: !!c.manager,
+        currency: c.currencyCode ?? null,
+        timezone: c.timeZone ?? null,
+        status: c.status ?? null,
+        parentCustomerId: null,
+        loginCustomerId: null,
+        level: 0,
+      })
+      if (c.manager) await descend(customerId, customerId, 1)
+    })
+  )
+
+  return [...nodes.values()]
 }
 
 // Debug: returns full customer_client rows for diagnostics

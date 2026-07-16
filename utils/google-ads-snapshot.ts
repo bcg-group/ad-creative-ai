@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { getConnectedAccounts, collectLeafAccounts, googleAdsQuery } from './google-ads'
+import { getUntrackedCustomerIds } from './google-ads-accounts'
 
 export type SnapshotRange = 'LAST_7_DAYS' | 'LAST_30_DAYS'
 
@@ -40,6 +41,7 @@ export async function snapshotUserCampaigns(
   const rows: any[] = []
 
   const accounts = await getConnectedAccounts(userId)
+  const untracked = await getUntrackedCustomerIds(userId)
 
   for (const { accessToken, googleAccountEmail } of accounts) {
     let leaves
@@ -49,6 +51,7 @@ export async function snapshotUserCampaigns(
       errors.push(`[${googleAccountEmail}] collectLeafAccounts: ${e?.message}`)
       continue
     }
+    leaves = leaves.filter((l) => !untracked.has(l.customerId))
 
     for (let i = 0; i < leaves.length; i += 5) {
       await Promise.all(

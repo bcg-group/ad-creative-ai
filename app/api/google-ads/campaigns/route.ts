@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { getConnectedAccounts, listAccessibleCustomers, googleAdsQuery, getClientAccounts } from '@/utils/google-ads'
+import { getUntrackedCustomerIds } from '@/utils/google-ads-accounts'
 
 const DATE_RANGE = 'LAST_30_DAYS'
 
@@ -69,6 +70,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Google Ads not connected' }, { status: 401 })
   }
 
+  // Accounts the user toggled off on /ads/accounts
+  const untracked = await getUntrackedCustomerIds(user.id)
+
   const allCampaigns: any[] = []
   const debugErrors: string[] = []
 
@@ -110,8 +114,8 @@ export async function GET(req: NextRequest) {
           return
         }
 
-        const subManagers = clients.filter((c) => c.isManager)
-        let leafClients = clients.filter((c) => !c.isManager)
+        const subManagers = clients.filter((c) => c.isManager && !untracked.has(c.id))
+        let leafClients = clients.filter((c) => !c.isManager && !untracked.has(c.id))
         debugErrors.push(`[${managerId}] found ${leafClients.length} client accounts, ${subManagers.length} sub-MCCs`)
 
         if (filterCustomerId) leafClients = leafClients.filter((c) => c.id === filterCustomerId)
@@ -138,6 +142,8 @@ export async function GET(req: NextRequest) {
 
       await Promise.all(
         topLevelIds.map(async (customerId) => {
+          if (untracked.has(customerId)) return
+
           // Check if this account is a manager (MCC)
           let isManager = false
           try {
