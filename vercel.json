@@ -9,6 +9,9 @@
     "app/api/google-ads/account-campaigns/route.ts": {
       "maxDuration": 30
     },
+    "app/api/google-ads/campaign-detail/route.ts": {
+      "maxDuration": 30
+    },
     "app/api/google-ads/assets/route.ts": {
       "maxDuration": 60
     },

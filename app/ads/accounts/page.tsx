@@ -493,7 +493,13 @@ export default function AccountsPage() {
                                   )}
                                   <div>
                                     <div className="font-medium text-blue-600">
-                                      {formatCustomerId(account.customer_id)}
+                                      {account.is_manager ? (
+                                        formatCustomerId(account.customer_id)
+                                      ) : (
+                                        <Link href={`/ads/accounts/${account.customer_id}`} className="hover:underline" title="Xem chi tiết campaign">
+                                          {formatCustomerId(account.customer_id)}
+                                        </Link>
+                                      )}
                                       {hasChildren && collapsed && (
                                         <span className="ml-1.5 text-xs font-normal text-gray-400">
                                           ({(childrenMap.get(account.customer_id) ?? []).length})
