@@ -50,11 +50,6 @@ type Campaign = {
   campaignId: string
   campaignName: string
   status: string
-  spend: number
-  conversions: number
-  cpi: number | null
-  roas: number | null
-  ctr: number
 }
 
 // 'loading' | 'error' | Campaign[] once loaded
@@ -101,8 +96,39 @@ export default function AccountsPage() {
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
   const [campaignsByAccount, setCampaignsByAccount] = useState<Map<string, CampaignState>>(new Map())
   const [expandingAll, setExpandingAll] = useState(false)
+  const [mutatingCampaigns, setMutatingCampaigns] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
+
+  const setCampaignStatus = (customerId: string, campaignId: string, status: string) => {
+    setCampaignsByAccount((prev) => {
+      const cur = prev.get(customerId)
+      if (!Array.isArray(cur)) return prev
+      return new Map(prev).set(customerId, cur.map((c) => c.campaignId === campaignId ? { ...c, status } : c))
+    })
+  }
+
+  // Enable ↔ pause a campaign via the API, optimistic with revert on failure.
+  const toggleCampaignStatus = async (customerId: string, campaign: Campaign) => {
+    const next = campaign.status === 'ENABLED' ? 'PAUSED' : 'ENABLED'
+    setMutatingCampaigns((prev) => new Set(prev).add(campaign.campaignId))
+    setCampaignStatus(customerId, campaign.campaignId, next)
+    try {
+      const res = await fetch('/api/google-ads/account-campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_id: customerId, campaign_id: campaign.campaignId, status: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setCampaignStatus(customerId, campaign.campaignId, campaign.status)
+    }
+    setMutatingCampaigns((prev) => {
+      const n = new Set(prev)
+      n.delete(campaign.campaignId)
+      return n
+    })
+  }
 
   const loadCampaigns = async (customerId: string) => {
     setCampaignsByAccount((prev) => new Map(prev).set(customerId, 'loading'))
@@ -521,29 +547,36 @@ export default function AccountsPage() {
                                           <tr className="text-left text-[11px] font-semibold text-gray-400 border-b border-gray-100">
                                             <th className="px-3 py-2">Campaign</th>
                                             <th className="px-3 py-2">Status</th>
-                                            <th className="px-3 py-2 text-right">Spend</th>
-                                            <th className="px-3 py-2 text-right">Conv.</th>
-                                            <th className="px-3 py-2 text-right">CPI</th>
-                                            <th className="px-3 py-2 text-right">ROAS</th>
-                                            <th className="px-3 py-2 text-right">CTR</th>
+                                            <th className="px-3 py-2 text-right">Bật / Tắt</th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {campaignState.map((c) => {
                                             const cs = campaignStatusDisplay(c.status)
+                                            const enabled = c.status === 'ENABLED'
+                                            const busy = mutatingCampaigns.has(c.campaignId)
                                             return (
                                               <tr key={c.campaignId} className="border-b border-gray-50 last:border-0">
-                                                <td className="px-3 py-2 text-gray-800 max-w-[280px] truncate">{c.campaignName}</td>
+                                                <td className="px-3 py-2 text-gray-800 max-w-[380px] truncate">{c.campaignName}</td>
                                                 <td className="px-3 py-2">
                                                   <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${cs.className}`}>{cs.label}</span>
                                                 </td>
-                                                <td className="px-3 py-2 text-right text-gray-700">
-                                                  {c.spend.toLocaleString()} {account.currency ?? ''}
+                                                <td className="px-3 py-2 text-right">
+                                                  <button
+                                                    onClick={() => toggleCampaignStatus(account.customer_id, c)}
+                                                    disabled={busy}
+                                                    title={enabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
+                                                    className={`relative inline-block w-9 h-5 rounded-full transition-colors align-middle disabled:opacity-50 ${
+                                                      enabled ? 'bg-green-500' : 'bg-gray-300'
+                                                    }`}
+                                                  >
+                                                    <span
+                                                      className={`absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                                        enabled ? 'translate-x-4' : 'translate-x-0'
+                                                      }`}
+                                                    />
+                                                  </button>
                                                 </td>
-                                                <td className="px-3 py-2 text-right text-gray-700">{c.conversions}</td>
-                                                <td className="px-3 py-2 text-right text-gray-700">{c.cpi ?? '—'}</td>
-                                                <td className="px-3 py-2 text-right text-gray-700">{c.roas ?? '—'}</td>
-                                                <td className="px-3 py-2 text-right text-gray-700">{c.ctr}%</td>
                                               </tr>
                                             )
                                           })}

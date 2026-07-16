@@ -284,6 +284,42 @@ export async function collectLeafAccounts(
   return leaves
 }
 
+// Pauses or enables a single campaign. Requires the OAuth token to have the
+// full `adwords` scope (write) — read-only tokens get a PERMISSION error.
+export async function mutateCampaignStatus(
+  accessToken: string,
+  customerId: string,
+  campaignId: string,
+  status: 'ENABLED' | 'PAUSED',
+  loginCustomerId?: string
+): Promise<void> {
+  const cleanId = customerId.replace(/-/g, '')
+  const res = await fetch(`${API_BASE}/customers/${cleanId}/campaigns:mutate`, {
+    method: 'POST',
+    headers: makeHeaders(accessToken, loginCustomerId),
+    body: JSON.stringify({
+      operations: [
+        {
+          update: {
+            resourceName: `customers/${cleanId}/campaigns/${campaignId}`,
+            status,
+          },
+          updateMask: 'status',
+        },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    let message = `${res.status}: ${errText.slice(0, 800)}`
+    try {
+      const parsed = JSON.parse(errText)
+      message = parsed?.error?.details?.[0]?.errors?.[0]?.message ?? parsed?.error?.message ?? message
+    } catch {}
+    throw new Error(message)
+  }
+}
+
 export type BillingInfo = {
   status: string | null
   paymentsAccountId: string | null
