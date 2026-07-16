@@ -284,6 +284,47 @@ export async function collectLeafAccounts(
   return leaves
 }
 
+export type BillingInfo = {
+  status: string | null
+  paymentsAccountId: string | null
+  paymentsAccountName: string | null
+}
+
+// Reads the account's billing setup (payment status + linked Google Payments
+// account). Only valid on non-manager customer accounts; managers and accounts
+// without billing access throw, so callers get null instead of an error.
+// Google Ads API does NOT expose the billing country — that lives in the
+// Google Payments profile, not the Ads API.
+export async function getBillingInfo(
+  accessToken: string,
+  customerId: string,
+  loginCustomerId?: string
+): Promise<BillingInfo | null> {
+  try {
+    const rows = await googleAdsSearch(
+      accessToken,
+      customerId,
+      `SELECT billing_setup.id, billing_setup.status,
+       billing_setup.payments_account_info.payments_account_id,
+       billing_setup.payments_account_info.payments_account_name
+       FROM billing_setup`,
+      loginCustomerId
+    )
+    if (rows.length === 0) return null
+    // Prefer the approved/active setup; fall back to the first row
+    const approved = rows.find((r: any) => r.billingSetup?.status === 'APPROVED')
+    const b = (approved ?? rows[0]).billingSetup
+    const info = b?.paymentsAccountInfo
+    return {
+      status: b?.status ?? null,
+      paymentsAccountId: info?.paymentsAccountId ?? null,
+      paymentsAccountName: info?.paymentsAccountName ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
 export type AccountNode = {
   customerId: string
   name: string | null

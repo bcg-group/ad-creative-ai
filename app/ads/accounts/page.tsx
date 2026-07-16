@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 
@@ -20,6 +20,9 @@ type AdAccount = {
   parent_customer_id: string | null
   level: number
   tracked: boolean
+  billing_status: string | null
+  payments_account_id: string | null
+  payments_account_name: string | null
   last_synced_at: string
 }
 
@@ -27,7 +30,6 @@ function formatCustomerId(id: string) {
   return id.length === 10 ? `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` : id
 }
 
-// Maps Google Ads status enum → display label + badge colors
 function statusDisplay(status: string | null): { label: string; className: string } {
   switch ((status ?? '').toUpperCase()) {
     case 'ENABLED':
@@ -41,6 +43,22 @@ function statusDisplay(status: string | null): { label: string; className: strin
       return { label: 'Closed', className: 'bg-gray-200 text-gray-600' }
     default:
       return { label: status || 'Unknown', className: 'bg-gray-100 text-gray-500' }
+  }
+}
+
+function billingDisplay(status: string | null): { label: string; className: string } {
+  switch ((status ?? '').toUpperCase()) {
+    case 'APPROVED':
+      return { label: 'Approved', className: 'bg-green-100 text-green-700' }
+    case 'PENDING':
+      return { label: 'Pending', className: 'bg-amber-100 text-amber-700' }
+    case 'APPROVED_HELD':
+      return { label: 'Held', className: 'bg-amber-100 text-amber-700' }
+    case 'CANCELLED':
+    case 'CANCELED':
+      return { label: 'Cancelled', className: 'bg-gray-200 text-gray-600' }
+    default:
+      return { label: '—', className: 'text-gray-400' }
   }
 }
 
@@ -66,9 +84,8 @@ export default function AccountsPage() {
         .order('created_at', { ascending: true }),
       supabase
         .from('ad_accounts')
-        .select('id, google_account_email, customer_id, name, currency, timezone, is_manager, status, parent_customer_id, level, tracked, last_synced_at')
+        .select('id, google_account_email, customer_id, name, currency, timezone, is_manager, status, parent_customer_id, level, tracked, billing_status, payments_account_id, payments_account_name, last_synced_at')
         .eq('user_id', user.id)
-        .order('is_manager', { ascending: false })
         .order('name', { ascending: true }),
     ])
 
@@ -100,10 +117,36 @@ export default function AccountsPage() {
     setSyncing(false)
   }
 
+  // parent → children lookup for tree flattening and cascade toggling
+  const childrenMap = useMemo(() => {
+    const map = new Map<string, AdAccount[]>()
+    for (const a of accounts) {
+      if (!a.parent_customer_id) continue
+      const list = map.get(a.parent_customer_id) ?? []
+      list.push(a)
+      map.set(a.parent_customer_id, list)
+    }
+    return map
+  }, [accounts])
+
+  const descendantIds = (customerId: string): string[] => {
+    const out: string[] = []
+    const stack = [...(childrenMap.get(customerId) ?? [])]
+    while (stack.length > 0) {
+      const node = stack.pop()!
+      out.push(node.customer_id)
+      stack.push(...(childrenMap.get(node.customer_id) ?? []))
+    }
+    return out
+  }
+
+  // Toggling an MCC cascades to everything under it
   const handleToggle = async (account: AdAccount) => {
     const next = !account.tracked
+    const ids = [account.customer_id, ...(account.is_manager ? descendantIds(account.customer_id) : [])]
+
     setToggling(account.customer_id)
-    setAccounts((prev) => prev.map((a) => a.customer_id === account.customer_id ? { ...a, tracked: next } : a))
+    setAccounts((prev) => prev.map((a) => ids.includes(a.customer_id) ? { ...a, tracked: next } : a))
 
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
@@ -111,9 +154,9 @@ export default function AccountsPage() {
         .from('ad_accounts')
         .update({ tracked: next })
         .eq('user_id', user.id)
-        .eq('customer_id', account.customer_id)
+        .in('customer_id', ids)
       if (error) {
-        setAccounts((prev) => prev.map((a) => a.customer_id === account.customer_id ? { ...a, tracked: account.tracked } : a))
+        setAccounts((prev) => prev.map((a) => ids.includes(a.customer_id) ? { ...a, tracked: account.tracked } : a))
       }
     }
     setToggling(null)
@@ -122,6 +165,24 @@ export default function AccountsPage() {
   const lastSynced = accounts.length > 0
     ? accounts.reduce((max, a) => a.last_synced_at > max ? a.last_synced_at : max, accounts[0].last_synced_at)
     : null
+
+  // DFS a login group into an ordered [account, depth] list so managers sit
+  // above their indented children.
+  const flattenTree = (groupAccounts: AdAccount[]): { account: AdAccount; depth: number }[] => {
+    const out: { account: AdAccount; depth: number }[] = []
+    const roots = groupAccounts.filter((a) => !a.parent_customer_id)
+    const walk = (node: AdAccount, depth: number) => {
+      out.push({ account: node, depth })
+      const kids = (childrenMap.get(node.customer_id) ?? [])
+        .filter((k) => k.google_account_email === node.google_account_email)
+      for (const k of kids) walk(k, depth + 1)
+    }
+    for (const r of roots) walk(r, 0)
+    // Orphans (parent not in this group) — append flat so nothing is hidden
+    const shown = new Set(out.map((o) => o.account.customer_id))
+    for (const a of groupAccounts) if (!shown.has(a.customer_id)) out.push({ account: a, depth: 0 })
+    return out
+  }
 
   if (loading) {
     return (
@@ -136,12 +197,12 @@ export default function AccountsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Ad Accounts</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Danh sách tài khoản Google Ads truy cập được từ các Google login đã kết nối.
+            Cây tài khoản Google Ads (MCC → tài khoản con) kèm trạng thái và billing.
             Tắt công tắc để loại account khỏi dashboard và snapshot hằng ngày.
           </p>
         </div>
@@ -178,7 +239,7 @@ export default function AccountsPage() {
             tài khoản từ Google Ads.
           </p>
           <p className="text-xs text-gray-400">
-            Nếu bấm Sync vẫn báo lỗi: đảm bảo đã chạy migration <code className="bg-gray-100 px-1 rounded">003_ad_accounts.sql</code> trong Supabase.
+            Nếu bấm Sync vẫn báo lỗi: đảm bảo đã chạy migration <code className="bg-gray-100 px-1 rounded">003</code> và <code className="bg-gray-100 px-1 rounded">004</code> trong Supabase.
           </p>
         </div>
       ) : (
@@ -186,6 +247,7 @@ export default function AccountsPage() {
           {connections.map(({ google_account_email }) => {
             const groupAccounts = accounts.filter((a) => a.google_account_email === google_account_email)
             const trackedCount = groupAccounts.filter((a) => a.tracked && !a.is_manager).length
+            const flat = flattenTree(groupAccounts)
             return (
               <div key={google_account_email} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 bg-gray-50 flex items-center justify-between border-b border-gray-100">
@@ -202,31 +264,50 @@ export default function AccountsPage() {
                   </p>
                 </div>
 
-                {groupAccounts.length === 0 ? (
+                {flat.length === 0 ? (
                   <p className="px-4 py-4 text-sm text-gray-400">Không tìm thấy tài khoản cho login này.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm whitespace-nowrap">
                       <thead>
                         <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-100">
-                          <th className="px-4 py-2.5 w-12">Stt</th>
+                          <th className="px-4 py-2.5">Account</th>
                           <th className="px-4 py-2.5">Type</th>
-                          <th className="px-4 py-2.5">Id</th>
                           <th className="px-4 py-2.5">Status</th>
                           <th className="px-4 py-2.5">Currency</th>
                           <th className="px-4 py-2.5">Timezone</th>
+                          <th className="px-4 py-2.5">Billing</th>
+                          <th className="px-4 py-2.5">Payments account</th>
                           <th className="px-4 py-2.5 text-right">Theo dõi</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {groupAccounts.map((account, idx) => {
+                        {flat.map(({ account, depth }) => {
                           const st = statusDisplay(account.status)
+                          const bl = billingDisplay(account.billing_status)
                           return (
                             <tr
                               key={account.customer_id}
                               className={`border-b border-gray-50 hover:bg-gray-50/60 ${account.tracked ? '' : 'opacity-50'}`}
                             >
-                              <td className="px-4 py-2.5 text-gray-400">{idx + 1}</td>
+                              <td className="px-4 py-2.5" style={{ paddingLeft: `${16 + depth * 22}px` }}>
+                                <div className="flex items-center gap-2">
+                                  {account.is_manager ? (
+                                    <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-blue-600">{formatCustomerId(account.customer_id)}</div>
+                                    {account.name && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{account.name}</div>}
+                                  </div>
+                                </div>
+                              </td>
                               <td className="px-4 py-2.5">
                                 <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                                   account.is_manager ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-100 text-gray-600'
@@ -235,16 +316,16 @@ export default function AccountsPage() {
                                 </span>
                               </td>
                               <td className="px-4 py-2.5">
-                                <div className="font-medium text-blue-600">{formatCustomerId(account.customer_id)}</div>
-                                {account.name && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{account.name}</div>}
-                              </td>
-                              <td className="px-4 py-2.5">
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${st.className}`}>
-                                  {st.label}
-                                </span>
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${st.className}`}>{st.label}</span>
                               </td>
                               <td className="px-4 py-2.5 text-gray-700">{account.currency ?? '—'}</td>
                               <td className="px-4 py-2.5 text-gray-700">{account.timezone ?? '—'}</td>
+                              <td className="px-4 py-2.5">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${bl.className}`}>{bl.label}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-600">
+                                {account.payments_account_name || account.payments_account_id || (account.is_manager ? '—' : '(chưa có)')}
+                              </td>
                               <td className="px-4 py-2.5 text-right">
                                 <button
                                   onClick={() => handleToggle(account)}

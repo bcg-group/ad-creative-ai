@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getConnectedAccounts, collectAccountTree } from './google-ads'
+import { getConnectedAccounts, collectAccountTree, getBillingInfo, type BillingInfo } from './google-ads'
 
 function serviceClient() {
   return createClient(
@@ -30,10 +30,24 @@ export async function syncUserAdAccounts(
       errors.push(`[${googleAccountEmail}] collectAccountTree: ${e?.message}`)
       continue
     }
+
+    // Billing setup only exists on active client accounts — fetch batched
+    const billing = new Map<string, BillingInfo>()
+    const billable = nodes.filter((n) => !n.isManager && n.status === 'ENABLED')
+    for (let i = 0; i < billable.length; i += 5) {
+      await Promise.all(
+        billable.slice(i, i + 5).map(async (n) => {
+          const info = await getBillingInfo(accessToken, n.customerId, n.loginCustomerId ?? undefined)
+          if (info) billing.set(n.customerId, info)
+        })
+      )
+    }
+
     for (const n of nodes) {
       // Same customer can be reachable from two Google logins — first wins
       if (seen.has(n.customerId)) continue
       seen.add(n.customerId)
+      const b = billing.get(n.customerId)
       rows.push({
         user_id: userId,
         google_account_email: googleAccountEmail,
@@ -46,6 +60,9 @@ export async function syncUserAdAccounts(
         parent_customer_id: n.parentCustomerId,
         login_customer_id: n.loginCustomerId,
         level: n.level,
+        billing_status: b?.status ?? null,
+        payments_account_id: b?.paymentsAccountId ?? null,
+        payments_account_name: b?.paymentsAccountName ?? null,
         last_synced_at: new Date().toISOString(),
       })
     }
