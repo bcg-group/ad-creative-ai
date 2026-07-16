@@ -95,7 +95,7 @@ export default function AccountsPage() {
   // Inline campaign panels: which account rows are expanded + their loaded campaigns
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
   const [campaignsByAccount, setCampaignsByAccount] = useState<Map<string, CampaignState>>(new Map())
-  const [expandingAll, setExpandingAll] = useState(false)
+  const [expandingLogin, setExpandingLogin] = useState<string | null>(null)
   const [mutatingCampaigns, setMutatingCampaigns] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
@@ -152,22 +152,36 @@ export default function AccountsPage() {
     if (willOpen && !campaignsByAccount.has(customerId)) loadCampaigns(customerId)
   }
 
-  // Open every login + MCC, then lazy-load campaigns for all leaf accounts in
-  // batches of 5 so we don't fire dozens of API calls at once.
-  const expandAll = async () => {
-    setExpandingAll(true)
-    setOpenLogins(new Set(connections.map((c) => c.google_account_email)))
-    setCollapsedManagers(new Set())
-    const leaves = accounts.filter((a) => !a.is_manager)
-    setExpandedAccounts(new Set(leaves.map((a) => a.customer_id)))
+  // Expand every leaf account in ONE login and lazy-load its campaigns in
+  // batches of 5, so we don't fire dozens of API calls at once.
+  const expandLoginCampaigns = async (email: string) => {
+    const leaves = accounts.filter((a) => a.google_account_email === email && !a.is_manager)
+    // make sure this login's MCCs are expanded so the leaves are visible
+    setCollapsedManagers((prev) => {
+      const next = new Set(prev)
+      accounts.forEach((a) => { if (a.google_account_email === email && a.is_manager) next.delete(a.customer_id) })
+      return next
+    })
+    setExpandedAccounts((prev) => {
+      const next = new Set(prev)
+      leaves.forEach((a) => next.add(a.customer_id))
+      return next
+    })
+    setExpandingLogin(email)
     const toLoad = leaves.filter((a) => !campaignsByAccount.has(a.customer_id))
     for (let i = 0; i < toLoad.length; i += 5) {
       await Promise.all(toLoad.slice(i, i + 5).map((a) => loadCampaigns(a.customer_id)))
     }
-    setExpandingAll(false)
+    setExpandingLogin(null)
   }
 
-  const collapseAll = () => setExpandedAccounts(new Set())
+  const collapseLoginCampaigns = (email: string) => {
+    setExpandedAccounts((prev) => {
+      const next = new Set(prev)
+      accounts.forEach((a) => { if (a.google_account_email === email) next.delete(a.customer_id) })
+      return next
+    })
+  }
 
   const toggleLogin = (email: string) => setOpenLogins((prev) => {
     const next = new Set(prev)
@@ -317,43 +331,17 @@ export default function AccountsPage() {
             Tắt công tắc để loại account khỏi dashboard và snapshot hằng ngày.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {accounts.length > 0 && (
-            expandedAccounts.size > 0 ? (
-              <button
-                onClick={collapseAll}
-                disabled={expandingAll}
-                className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                Đóng tất cả campaign
-              </button>
-            ) : (
-              <button
-                onClick={expandAll}
-                disabled={expandingAll}
-                className="flex items-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-60 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                <svg className={`w-4 h-4 ${expandingAll ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {expandingAll
-                    ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />}
-                </svg>
-                {expandingAll ? 'Đang mở...' : 'Mở tất cả campaign'}
-              </button>
-            )
-          )}
-          <button
-            onClick={handleSync}
-            disabled={syncing || connections.length === 0}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <svg className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {syncing ? 'Đang đồng bộ...' : 'Sync accounts'}
-          </button>
-        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing || connections.length === 0}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0"
+        >
+          <svg className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {syncing ? 'Đang đồng bộ...' : 'Sync accounts'}
+        </button>
       </div>
 
       {syncError && (
@@ -387,6 +375,9 @@ export default function AccountsPage() {
             const activeCount = groupAccounts.filter((a) => (a.status ?? '').toUpperCase() === 'ENABLED' && !a.is_manager).length
             const isOpen = openLogins.has(google_account_email)
             const flat = isOpen ? flattenTree(groupAccounts) : []
+            const anyCampaignOpen = groupAccounts.some((a) => !a.is_manager && expandedAccounts.has(a.customer_id))
+            const loginBusy = expandingLogin === google_account_email
+            const hasLeaves = groupAccounts.some((a) => !a.is_manager)
             return (
               <div key={google_account_email} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <button
@@ -412,8 +403,35 @@ export default function AccountsPage() {
                 {!isOpen ? null : flat.length === 0 ? (
                   <p className="px-4 py-4 text-sm text-gray-400">Không tìm thấy tài khoản cho login này.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm whitespace-nowrap">
+                  <>
+                    {hasLeaves && (
+                      <div className="px-4 py-2 border-b border-gray-100 flex justify-end">
+                        {anyCampaignOpen ? (
+                          <button
+                            onClick={() => collapseLoginCampaigns(google_account_email)}
+                            className="text-xs text-gray-600 hover:text-gray-900 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+                          >
+                            Đóng tất cả campaign
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => expandLoginCampaigns(google_account_email)}
+                            disabled={loginBusy}
+                            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-60"
+                          >
+                            {loginBusy && (
+                              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                            )}
+                            {loginBusy ? 'Đang mở...' : 'Mở tất cả campaign'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm whitespace-nowrap">
                       <thead>
                         <tr className="text-left text-xs font-semibold text-gray-500 border-b border-gray-100">
                           <th className="px-4 py-2.5">Account</th>
@@ -592,7 +610,8 @@ export default function AccountsPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             )
