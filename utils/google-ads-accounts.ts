@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { getConnectedAccounts, collectAccountTree, getBillingInfo, type BillingInfo } from './google-ads'
+import { notifyAccountChanges, type AccountChange } from './telegram'
 
 function serviceClient() {
   return createClient(
@@ -69,6 +70,33 @@ export async function syncUserAdAccounts(
   }
 
   const supabase = serviceClient()
+
+  // Diff status/billing against the previous sync so linked Telegram users
+  // get alerted (e.g. ENABLED → SUSPENDED). Null on either side is skipped —
+  // first sync after a migration must not spam.
+  const { data: prevRows } = await supabase
+    .from('ad_accounts')
+    .select('customer_id, status, billing_status')
+    .eq('user_id', userId)
+  const prev = new Map((prevRows ?? []).map((r) => [r.customer_id, r]))
+  const changes: AccountChange[] = []
+  for (const row of rows) {
+    const old = prev.get(row.customer_id)
+    if (!old) continue
+    if (old.status && row.status && old.status !== row.status) {
+      changes.push({
+        customerId: row.customer_id, name: row.name,
+        field: 'status', from: old.status, to: row.status,
+      })
+    }
+    if (old.billing_status && row.billing_status && old.billing_status !== row.billing_status) {
+      changes.push({
+        customerId: row.customer_id, name: row.name,
+        field: 'billing', from: old.billing_status, to: row.billing_status,
+      })
+    }
+  }
+
   let synced = 0
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500)
@@ -96,6 +124,14 @@ export async function syncUserAdAccounts(
         .in('customer_id', gone)
       if (error) errors.push(`delete stale: ${error.message}`)
       else removed = gone.length
+    }
+  }
+
+  if (synced > 0) {
+    try {
+      await notifyAccountChanges(userId, changes)
+    } catch {
+      // notification failure must never fail the sync
     }
   }
 
