@@ -11,9 +11,13 @@ type TelegramStatus = {
 
 type Comparator = 'gt' | 'gte' | 'lt' | 'lte'
 
+type RuleMetric =
+  | 'roas' | 'spend' | 'conversions' | 'conversions_value'
+  | 'cpi' | 'cpc' | 'ctr' | 'clicks' | 'impressions'
+
 type Rule = {
   id: number
-  metric: 'roas' | 'spend'
+  metric: RuleMetric
   period: 'day' | 'week' | 'month'
   comparator: Comparator | null
   threshold: number | null
@@ -27,7 +31,29 @@ type AccountOption = {
   name: string | null
 }
 
-const METRIC_LABEL = { roas: 'ROAS', spend: 'Spend' }
+const METRIC_LABEL: Record<RuleMetric, string> = {
+  roas: 'ROAS',
+  spend: 'Spend',
+  conversions: 'Conversions',
+  conversions_value: 'Conv. value',
+  cpi: 'CPI (cost / conv.)',
+  cpc: 'CPC',
+  ctr: 'CTR (%)',
+  clicks: 'Clicks',
+  impressions: 'Impressions',
+}
+
+const THRESHOLD_HINT: Record<RuleMetric, string> = {
+  roas: 'e.g. 1',
+  spend: 'e.g. 500',
+  conversions: 'e.g. 100',
+  conversions_value: 'e.g. 1000',
+  cpi: 'e.g. 2.5',
+  cpc: 'e.g. 0.5',
+  ctr: 'e.g. 2 (%)',
+  clicks: 'e.g. 1000',
+  impressions: 'e.g. 50000',
+}
 const PERIOD_LABEL = { day: 'Daily', week: 'Weekly', month: 'Monthly' }
 const COMPARATOR_LABEL: Record<Comparator, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' }
 
@@ -112,7 +138,7 @@ export default function SettingsPage() {
   const [accounts, setAccounts] = useState<AccountOption[]>([])
   const [rulesLoading, setRulesLoading] = useState(true)
 
-  const [formMetric, setFormMetric] = useState<'roas' | 'spend'>('roas')
+  const [formMetric, setFormMetric] = useState<RuleMetric>('roas')
   const [formPeriod, setFormPeriod] = useState<'day' | 'week' | 'month'>('day')
   const [formAccount, setFormAccount] = useState('')
   const [formCondition, setFormCondition] = useState<'always' | Comparator>('always')
@@ -255,11 +281,12 @@ export default function SettingsPage() {
             <span className="block text-xs text-gray-400 mb-1">Metric</span>
             <select
               value={formMetric}
-              onChange={(e) => setFormMetric(e.target.value as 'roas' | 'spend')}
+              onChange={(e) => setFormMetric(e.target.value as RuleMetric)}
               className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white"
             >
-              <option value="roas">ROAS</option>
-              <option value="spend">Spend</option>
+              {(Object.keys(METRIC_LABEL) as RuleMetric[]).map((m) => (
+                <option key={m} value={m}>{METRIC_LABEL[m]}</option>
+              ))}
             </select>
           </label>
           <label className="text-sm text-gray-600">
@@ -311,7 +338,7 @@ export default function SettingsPage() {
                 step="any"
                 value={formThreshold}
                 onChange={(e) => setFormThreshold(e.target.value)}
-                placeholder={formMetric === 'roas' ? 'e.g. 1' : 'e.g. 500'}
+                placeholder={THRESHOLD_HINT[formMetric]}
                 className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24"
               />
             </label>

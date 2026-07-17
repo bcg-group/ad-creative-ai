@@ -11,15 +11,31 @@ function serviceClient() {
 
 type Comparator = 'gt' | 'gte' | 'lt' | 'lte'
 
+export type RuleMetric =
+  | 'roas' | 'spend' | 'conversions' | 'conversions_value'
+  | 'cpi' | 'cpc' | 'ctr' | 'clicks' | 'impressions'
+
 type Rule = {
   id: number
-  metric: 'roas' | 'spend'
+  metric: RuleMetric
   period: 'day' | 'week' | 'month'
   comparator: Comparator | null
   threshold: number | null
   customer_id: string | null
   enabled: boolean
   last_sent_at: string | null
+}
+
+const METRIC_LABEL: Record<RuleMetric, string> = {
+  roas: 'ROAS',
+  spend: 'Spend',
+  conversions: 'Conversions',
+  conversions_value: 'Conv. value',
+  cpi: 'CPI',
+  cpc: 'CPC',
+  ctr: 'CTR',
+  clicks: 'Clicks',
+  impressions: 'Impressions',
 }
 
 const COMPARATOR_LABEL: Record<Comparator, string> = {
@@ -65,7 +81,39 @@ function matches(value: number, comparator: Comparator, threshold: number): bool
 }
 
 function fmt(n: number) {
+  if (!Number.isFinite(n)) return '∞'
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fmtInt(n: number) {
+  return n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+type Totals = { spend: number; value: number; conversions: number; clicks: number; impressions: number }
+
+// Ratio metrics with a zero denominator but real spend/clicks are effectively
+// infinite — Infinity makes "CPI > x" alerts still fire on zero-conversion days.
+function metricValue(metric: RuleMetric, g: Totals): number {
+  switch (metric) {
+    case 'spend': return g.spend
+    case 'roas': return g.spend > 0 ? g.value / g.spend : 0
+    case 'conversions': return g.conversions
+    case 'conversions_value': return g.value
+    case 'cpi': return g.conversions > 0 ? g.spend / g.conversions : g.spend > 0 ? Infinity : 0
+    case 'cpc': return g.clicks > 0 ? g.spend / g.clicks : g.spend > 0 ? Infinity : 0
+    case 'ctr': return g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0
+    case 'clicks': return g.clicks
+    case 'impressions': return g.impressions
+  }
+}
+
+function fmtMetric(metric: RuleMetric, v: number): string {
+  switch (metric) {
+    case 'ctr': return `${fmt(v)}%`
+    case 'clicks':
+    case 'impressions': return fmtInt(v)
+    default: return fmt(v)
+  }
 }
 
 // Evaluates every enabled rule for the user against campaign_snapshots and
@@ -101,7 +149,7 @@ export async function evaluateUserNotificationRules(
 
     let query = supabase
       .from('campaign_snapshots')
-      .select('customer_id, account_name, currency, spend, conversions_value')
+      .select('customer_id, account_name, currency, spend, conversions, conversions_value, clicks, impressions')
       .eq('user_id', userId)
       .gte('snapshot_date', window.from)
       .lte('snapshot_date', window.to)
@@ -113,30 +161,33 @@ export async function evaluateUserNotificationRules(
       continue
     }
 
-    // Sum spend / conversion value per currency
-    const groups = new Map<string, { spend: number; value: number; accountName: string | null }>()
+    // Sum totals per currency
+    const groups = new Map<string, Totals & { accountName: string | null }>()
     for (const r of rows ?? []) {
       if (!rule.customer_id && untracked.has(r.customer_id)) continue
       const key = r.currency ?? '—'
-      const g = groups.get(key) ?? { spend: 0, value: 0, accountName: r.account_name }
+      const g = groups.get(key) ?? {
+        spend: 0, value: 0, conversions: 0, clicks: 0, impressions: 0,
+        accountName: r.account_name,
+      }
       g.spend += Number(r.spend)
       g.value += Number(r.conversions_value)
+      g.conversions += Number(r.conversions)
+      g.clicks += Number(r.clicks)
+      g.impressions += Number(r.impressions)
       groups.set(key, g)
     }
     if (groups.size === 0) continue
 
-    const metricValue = (g: { spend: number; value: number }) =>
-      rule.metric === 'spend' ? g.spend : g.spend > 0 ? g.value / g.spend : 0
-
     let entries = [...groups.entries()]
     if (rule.comparator !== null && rule.threshold !== null) {
       entries = entries.filter(([, g]) =>
-        matches(metricValue(g), rule.comparator!, Number(rule.threshold))
+        matches(metricValue(rule.metric, g), rule.comparator!, Number(rule.threshold))
       )
       if (entries.length === 0) continue
     }
 
-    const metricLabel = rule.metric === 'roas' ? 'ROAS' : 'Spend'
+    const metricLabel = METRIC_LABEL[rule.metric]
     const scope = rule.customer_id
       ? escapeHtml(entries[0][1].accountName ?? rule.customer_id)
       : 'All tracked accounts'
@@ -149,7 +200,13 @@ export async function evaluateUserNotificationRules(
     ]
     for (const [currency, g] of entries) {
       const roas = g.spend > 0 ? fmt(g.value / g.spend) : '—'
-      lines.push(`<b>${escapeHtml(currency)}</b>  Spend ${fmt(g.spend)} · Value ${fmt(g.value)} · ROAS ${roas}`)
+      let line = `<b>${escapeHtml(currency)}</b>  Spend ${fmt(g.spend)} · Value ${fmt(g.value)} · ROAS ${roas}`
+      // Base line already shows spend/value/ROAS — append the rule's own
+      // metric when it's a different one
+      if (!['spend', 'roas', 'conversions_value'].includes(rule.metric)) {
+        line += ` · ${metricLabel} ${fmtMetric(rule.metric, metricValue(rule.metric, g))}`
+      }
+      lines.push(line)
     }
     if (rule.comparator !== null && rule.threshold !== null) {
       lines.push('')
