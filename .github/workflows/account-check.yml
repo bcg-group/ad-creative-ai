@@ -1,0 +1,26 @@
+# Gọi endpoint check trạng thái account mỗi 30 phút — bắn Telegram sớm
+# khi account bị suspended / billing đổi (cron Vercel Hobby chỉ chạy 1 lần/ngày).
+# Setup một lần trên GitHub: Settings → Secrets and variables → Actions
+#   → New repository secret: CRON_SECRET (= giá trị trong Vercel env).
+# Lưu ý: schedule của GitHub có thể trễ vài phút, và bị tự tắt nếu repo
+# không có commit nào trong 60 ngày (vào tab Actions bật lại).
+
+name: Account status check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  account-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Call account-check endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail --silent --show-error --max-time 290 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "https://ads.ar-draw.com/api/cron/account-check"
