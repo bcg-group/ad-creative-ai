@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getLinkedChatId, sendTelegramMessage, escapeHtml } from './telegram'
+import { getLinkedChatId, sendTelegramMessage, escapeHtml, formatCustomerId } from './telegram'
 import { getUntrackedCustomerIds } from './google-ads-accounts'
 
 function serviceClient() {
@@ -189,7 +189,7 @@ export async function evaluateUserNotificationRules(
 
     const metricLabel = METRIC_LABEL[rule.metric]
     const scope = rule.customer_id
-      ? escapeHtml(entries[0][1].accountName ?? rule.customer_id)
+      ? `${escapeHtml(entries[0][1].accountName ?? rule.customer_id)} (${formatCustomerId(rule.customer_id)})`
       : 'All tracked accounts'
     const range = window.from === window.to ? window.from : `${window.from} → ${window.to}`
 

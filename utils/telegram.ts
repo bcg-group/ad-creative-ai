@@ -49,7 +49,7 @@ export type AccountChange = {
   to: string
 }
 
-function formatCustomerId(id: string) {
+export function formatCustomerId(id: string) {
   return id.length === 10 ? `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` : id
 }
 
